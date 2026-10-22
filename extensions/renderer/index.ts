@@ -6,7 +6,7 @@ import { installMainScreenDoRenderPatch } from "../utils/fullscreen-detect.ts";
 import { installToolMouseInteraction, teardownToolMouseInteraction } from "./mouse/interaction.ts";
 import { getToolMouseTui, noteNewTranscriptItem } from "./mouse/scroll.ts";
 import { installStickyPromptPatches, disposeStickyPromptPatches, setStickyPromptTheme } from "./mouse/sticky-prompt.ts";
-import { clearAllAnimations, clearLiveToolCalls, noteStreamingToolCalls, retireLiveToolCall } from "./tool/tool-state.ts";
+import { clearLiveToolCalls, noteStreamingToolCalls, retireLiveToolCall } from "./tool/tool-state.ts";
 import { capturePreviousContent, WriteExecutionMetadataStore } from "./tool/diff/write-execution.ts";
 import { installMessageDisplayRendering, setMessageDisplayTheme, refreshMessageDisplays } from "./tool/message-display.ts";
 
@@ -96,7 +96,6 @@ export default function claudeCodeStyle(pi: ExtensionAPI): void {
 		current.disposeExpandedBackground();
 		current.disposeMessageDisplay();
 		disposeStickyPromptPatches();
-		clearAllAnimations();
 		installed = undefined;
 	});
 }

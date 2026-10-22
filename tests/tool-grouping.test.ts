@@ -39,7 +39,7 @@ test("restored tools still render as running with the braille loader", () => {
 			.map((line: string) => line.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, ""))
 			.filter((line: string) => line.trim());
 		assert.match(rendered[0], /2 running/);
-		assert.ok(rendered.some((line: string) => /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/.test(line)));
+		assert.ok(rendered.some((line: string) => /●/.test(line)));
 		assert.doesNotMatch(rendered.join("\n"), /queued/);
 	} finally {
 		hooks.shutdown();
@@ -71,9 +71,9 @@ test("mixed tools group across three empty separators while edit/write and conte
 			/^ ● Multiple Tools: 3 running · Read×1, Bash×1, Grep×1 · click to show more$/,
 		);
 		assert.equal(collapsed.filter((line: string) => line.trim()).length, 4);
-		assert.match(collapsed[1], /^ ├ [⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Read /);
-		assert.match(collapsed[2], /^ ├ [⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Bash /);
-		assert.match(collapsed[3], /^ └ [⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Grep /);
+		assert.match(collapsed[1], /^ ├ ● Read /);
+		assert.match(collapsed[2], /^ ├ ● Bash /);
+		assert.match(collapsed[3], /^ └ ● Grep /);
 		bash.updateResult({ content: [], isError: false });
 		grep.updateResult({ content: [], isError: true });
 		assert.match(
@@ -170,7 +170,7 @@ test("expanded native cards align nested trees through interleaved ANSI padding"
 		assert.equal(backgroundIndex, 0, "expanded panel background covers the full row");
 		assert.match(
 			stripAnsi(rendered[2]),
-			/^ ├ [⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Read/,
+			/^ ├ ● Read/,
 			"panel starts directly with the loading tool",
 		);
 		assert.equal(
@@ -181,7 +181,7 @@ test("expanded native cards align nested trees through interleaved ANSI padding"
 		const expanded = rendered.map(stripAnsi).join("\n");
 		assert.match(
 			expanded,
-			/^ ├ [⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Read sample\.ts\s*$/m,
+			/^ ├ ● Read sample\.ts\s*$/m,
 			"expanded branch matches collapsed position",
 		);
 		assert.match(expanded, /^ │ ├ Input\s*$/m, "nested tree aligns with the status dot");
@@ -417,7 +417,7 @@ test("pending and expanded groups bypass settled render caching", () => {
 		const group = parent.children[0] as ToolGroupComponent;
 
 		const pending = group.render(120);
-		assert.notStrictEqual(group.render(120), pending, "pending spinner output is not memoized");
+		assert.notStrictEqual(group.render(120), pending, "pending tool state stays live between renders");
 
 		read.updateResult({ content: [], isError: false });
 		bash.updateResult({ content: [], isError: false });
@@ -566,7 +566,7 @@ test("折叠分组行：codemode 报结果统计，没结果时退回代码预�
 		assert.equal(rows[2], " ├ ✓ Codemode 1 call · 1 line output");
 		assert.equal(rows[3], " ├ ✓ Codemode 2 calls · 2 lines output");
 		// 还没结果：退回参数摘要，同样不带 code 预览
-		assert.match(rows[4]!, /^ └ [⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Codemode$/);
+		assert.match(rows[4]!, /^ └ ● Codemode$/);
 	} finally {
 		hooks.shutdown();
 	}

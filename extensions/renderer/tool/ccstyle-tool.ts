@@ -36,11 +36,9 @@ import {
 } from "./result.ts";
 import { hasExpandableDetail, isExpandedToolIoView, renderExpandedToolResult } from "./tool-io.ts";
 import {
-	isLiveToolCall,
 	isToolExpanded,
 	pendingIcon,
 	resolveToolVisualState,
-	scheduleAnimation,
 	settledIcon,
 	setToolVisualState,
 	toolIconColor,
@@ -196,15 +194,9 @@ export function createCcstyleTool(
 			const isPending =
 				visualState === "pending" ||
 				(!visualState && (context?.isPartial || context?.executionStarted));
-			// 等待窗口（声明流式中或等待派发）也要转：Pi 要到 assistant 消息结束
-			// 才派发执行，这段只靠 executionStarted 会一直冻在第一帧。
-			const animating =
-				isPending && (Boolean(context?.executionStarted) || isLiveToolCall(context?.toolCallId));
-			if (animating) scheduleAnimation(context, { light: true });
 			const settledRawIcon = isPending ? "" : settledIcon(toolName, visualState);
 			const settledIconStyled = theme.fg(toolIconColor(context), settledRawIcon);
-			// 逐帧 spinner：帧在 render() 内取，动画定时器只需 requestRender，
-			// 不再每次 tick 走 updateDisplay 把整张卡重建一遍。
+			// Working 负责全局活动动画；工具行使用静态标记保留进行中状态。
 			const pendingIconStyled = () => theme.fg(toolIconColor(context), pendingIcon(toolName));
 			const summary = toolCallSummary(toolName, args, {
 				title,
@@ -252,8 +244,6 @@ export function createCcstyleTool(
 			const expanded = Boolean(context?.expanded);
 			return {
 				render(width: number) {
-					// 轻量 tick 只会 requestRender，靠这里续期，动画才能自维持。
-					if (animating) scheduleAnimation(context, { light: true });
 					const icon = isPending ? pendingIconStyled() : settledIconStyled;
 					if (cachedLine !== undefined && cachedWidth === width && cachedIcon === icon) {
 						return [cachedLine];
@@ -342,7 +332,7 @@ export function createCcstyleTool(
 				if (!SHELL_TOOL_NAMES.has(toolName)) {
 					return new Text(theme.fg("muted", pending), 0, 0);
 				}
-				// shell 运行中报已用时间：数字在 render() 内取，动画 tick 才能带上新值。
+				// shell 运行中报已用时间：数字在 render() 内取，Working 重绘时同步更新。
 				return {
 					render(width: number) {
 						const elapsed = shellDurationText(toolName, context, true);

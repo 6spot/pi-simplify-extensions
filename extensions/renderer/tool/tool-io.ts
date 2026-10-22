@@ -9,7 +9,6 @@ import {
 	toolViewportWidth,
 } from "./result.ts";
 import { showMoreHintText } from "./names.ts";
-import { TOOL_LOADING_INTERVAL_MS } from "../../utils/tool-loading-icon.ts";
 import { createCodeBlockHighlighter } from "./diff/diff-highlight.ts";
 
 export class ExpandedToolResultText {

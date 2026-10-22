@@ -35,7 +35,7 @@ export function formatOneLineFooter(parts: FooterParts, width: number, theme: Fo
 	const fg = theme.fg.bind(theme);
 	const model = fg("accent", parts.model || "no-model");
 	const thinking = parts.thinking && parts.thinking !== "off"
-		? fg("dim", ` (${parts.thinking})`) : "";
+		? fg("dim", parts.thinking) : "";
 	const percentage = parts.contextPercent == null
 		? "ctx ?"
 		: `ctx ${Math.floor(parts.contextPercent)}%`;
@@ -47,19 +47,29 @@ export function formatOneLineFooter(parts: FooterParts, width: number, theme: Fo
 	const branchFull = parts.branch
 		? branch + fg("dim", gitChanges(parts.git))
 		: "";
-	const join = (...values: string[]) => values.filter(Boolean).join(fg("muted", " · "));
-	const candidates = [
-		join(model + thinking, contextFull, cost, cwd, branchFull),
-		join(model + thinking, contextShort, cost, cwd, branch),
-		join(model, contextShort, cost, cwd, branch),
-		join(model, contextShort, cwd, branch),
-		join(model, contextShort, branch),
-		join(model, contextShort),
+	const separator = fg("muted", " · ");
+	const join = (...values: string[]) => values.filter(Boolean).join(separator);
+	const right = join(thinking, model);
+	const metrics = join(contextShort, cost);
+	// Shorten project details before dropping context, cost or Thinking Level.
+	const projectBudget = available - visibleWidth(metrics) - visibleWidth(right)
+		- visibleWidth(separator) - 1;
+	const project = projectBudget >= 3
+		? truncateToWidth(join(cwd, branch), projectBudget, "…") : "";
+	const candidates: [string, string][] = [
+		[join(cwd, branchFull, contextFull, cost), right],
+		[join(project, metrics), right],
+		[contextShort, right],
+		["", right],
+		[contextShort, model],
+		["", model],
 	];
-	for (const line of candidates) {
-		if (visibleWidth(line) <= available) return line;
+	for (const [left, end] of candidates) {
+		const gap = available - visibleWidth(left) - visibleWidth(end);
+		if (gap >= (left ? 1 : 0)) return left + " ".repeat(gap) + end;
 	}
-	return truncateToWidth(join(model, contextShort), available, "…");
+	const shortened = truncateToWidth(model, available, "…");
+	return " ".repeat(Math.max(0, available - visibleWidth(shortened))) + shortened;
 }
 
 const createFooter =

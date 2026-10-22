@@ -6,7 +6,6 @@ import { config } from "../extensions/config/config.ts";
 import { installDefaultMode } from "../extensions/renderer/default-mode.ts";
 import { formatToolDuration } from "../extensions/renderer/tool/result.ts";
 import { WriteExecutionMetadataStore } from "../extensions/renderer/tool/diff/index.ts";
-import { TOOL_LOADING_INTERVAL_MS } from "../extensions/utils/tool-loading-icon.ts";
 
 initTheme("dark");
 
@@ -80,7 +79,7 @@ test("完成态：没有 durationMs 时用渲染器自己的时钟", () => {
 	}
 });
 
-test("运行中：shell 报已用时间，并且随动画 tick 更新", async () => {
+test("运行中：shell 报已用时间，并且随重绘更新", async () => {
 	const originalNow = Date.now;
 	let now = 1_000;
 	Date.now = () => now;
@@ -91,10 +90,12 @@ test("运行中：shell 报已用时间，并且随动画 tick 更新", async ()
 		tool.render(100); // renderCall 记下开始时间
 		tool.updateResult({ content: [], isError: false }, true);
 
-		assert.match(render(tool)[1]!, /Pending… · 0ms$/, "刚开跑报 0ms");
+		const running = render(tool);
+		assert.match(running[0]!, /^\s*● Bash sleep 5/, "工具行用静态标记表示进行中");
+		assert.match(running[1]!, /Pending… · 0ms$/, "刚开跑报 0ms");
 
-		now = 1_000 + TOOL_LOADING_INTERVAL_MS;
-		assert.match(render(tool)[1]!, /Pending… · 80ms$/, "时间推进后数字要跟着变");
+		now = 1_250;
+		assert.match(render(tool)[1]!, /Pending… · 250ms$/, "时间推进后数字要跟着变");
 
 		now = 1_000 + 4_000;
 		assert.match(render(tool)[1]!, /Pending… · 4\.0s$/);

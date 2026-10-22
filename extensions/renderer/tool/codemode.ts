@@ -13,7 +13,6 @@ import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { config } from "../../config/config.ts";
 import { stripAnsi } from "../../utils/ansi-text.ts";
 import { oneLine } from "../../utils/format.ts";
-import { toolLoadingIcon } from "../../utils/tool-loading-icon.ts";
 import { sanitizeToolResultText } from "../../utils/tool-result-sanitize.ts";
 import { mcpToolTitle } from "./mcp-title.ts";
 import {
@@ -280,8 +279,8 @@ function statusIcon(status: unknown, theme: any): string {
 		case "cancelled":
 			return theme.fg("muted", "⊘");
 		default:
-			// 运行中：帧在 render() 内取，动画定时器只负责 requestRender
-			return theme.fg("dim", toolLoadingIcon());
+			// Working 提供活动动画；子调用保留静态进行中标记。
+			return theme.fg("dim", "●");
 	}
 }
 

@@ -6,9 +6,9 @@
 
 - Claude Code 风格工具卡、工具分组、点击展开与收起、Rich Diff
 - Compact Thinking 思考预览（不再提供整回合 Compact Mode）
-- Codex 风格输入框：灰色背景、无上下横线、保留原生编辑能力
-- 独立在输入框上方的 Working 状态，显示当前工具操作、Token 数量和耗时
-- 单行无图标 Footer：模型、Context、费用、目录、Git；终端窄时自动精简
+- Codex 风格输入框：灰色背景、圆角细边框、无前缀符号、保留原生编辑能力
+- 独立在输入框上方的 Working 状态，显示当前工具操作、Token 数量和耗时；工具行用静态标记避免重复转圈
+- 单行无图标 Footer：左侧目录、Git、Context、费用，右侧 Thinking Level、模型；模型固定在最右端，终端窄时先精简项目信息
 - Fullscreen 鼠标操作、回到底部、顶部固定用户消息
 - `/context` 上下文查看
 - 官方 Pi 启动欢迎页，不替换 Logo
@@ -23,7 +23,7 @@ pi install git:github.com/6spot/pi-simplify-extensions
 
 本地开发可在项目目录运行 `pi -e .`。检查代码可运行 `npm ci`、`npm run typecheck`、`npm test`。
 
-在 Pi 的 `/settings` 中切换主题 `simplify-dark` 或 `simplify-light`。两者采用石墨蓝配色：中性灰区分工具卡和输入框，柔和蓝色用于交互，成功由绿色标记表达；Diff 保留低饱和的增删底色和行内强调。
+在 Pi 的 `/settings` 中切换主题 `simplify-dark` 或 `simplify-light`。两者采用石墨蓝配色：中性灰区分工具卡和输入框，柔和蓝色用于交互，成功由绿色标记表达；Diff 保留低饱和的增删底色和行内强调，思考文字用柔和蓝色区别于工具说明。
 
 ## 配置
 

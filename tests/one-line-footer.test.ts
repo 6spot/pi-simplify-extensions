@@ -15,8 +15,10 @@ const sample: FooterParts = {
 	git: { add: 3, del: 1, status: "!" },
 };
 
-test("wide footer is a single text-only line with model, context, cost, cwd and Git", () => {
+test("wide footer keeps project and usage on the left and model at the right edge", () => {
 	const line = formatOneLineFooter(sample, 120, theme);
+	assert.match(line, /^my-project · main \+3\/-1 · ctx 42%\/200k · \$0\.23\s+high · gpt-6$/);
+	assert.equal(visibleWidth(line), 120);
 	assert.match(line, /gpt-6/);
 	assert.match(line, /ctx 42%/);
 	assert.match(line, /\$0\.23/);
@@ -26,16 +28,20 @@ test("wide footer is a single text-only line with model, context, cost, cwd and 
 	assert.doesNotMatch(line, /[█░󰆼]/);
 });
 
-test("narrow footer stays one line and gives model and context priority", () => {
-	for (const width of [8, 20, 32, 48, 60]) {
+test("narrow footer shortens project details before usage and keeps model right-aligned", () => {
+	for (const width of [0, 1, 4, 8, 20, 32, 48, 60]) {
 		const line = formatOneLineFooter(sample, width, theme);
-		assert.ok(visibleWidth(line) <= width, `overflow at ${width}`);
-		assert.equal(line.includes("\\n"), false);
+		assert.equal(visibleWidth(line), width, `width ${width}`);
+		assert.equal(line.includes("\n"), false);
+		if (width >= 5) assert.ok(line.endsWith("gpt-6"));
 	}
-	assert.match(formatOneLineFooter(sample, 32, theme), /gpt-6/);
+	assert.match(formatOneLineFooter(sample, 20, theme), /ctx 42%\s+high · gpt-6$/);
+	assert.match(formatOneLineFooter(sample, 32, theme), /ctx 42% · \$0\.23\s+high · gpt-6$/);
+	assert.doesNotMatch(formatOneLineFooter(sample, 32, theme), /my-project/);
 });
 
 test("unknown context, absent Git and zero cost remain clean", () => {
 	const text = formatOneLineFooter({ model: "local", contextPercent: null, cost: 0 }, 80, theme);
-	assert.equal(text, "local · ctx ?");
+	assert.match(text, /^ctx \?\s+local$/);
+	assert.equal(visibleWidth(text), 80);
 });

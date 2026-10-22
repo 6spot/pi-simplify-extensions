@@ -8,7 +8,6 @@ import {
 } from "@earendil-works/pi-tui";
 import { config } from "../../config/config.ts";
 import { aggregateToolCardBgSlot, toolCardStatus } from "./tool-state.ts";
-import { TOOL_LOADING_INTERVAL_MS, toolLoadingIcon } from "../../utils/tool-loading-icon.ts";
 import {
 	ASK_USER_QUESTION_TOOL_NAME,
 	askUserAnswerText,
@@ -21,7 +20,6 @@ import {
 	codemodeOutputLineCount,
 	codemodeSummaryParts,
 } from "./codemode.ts";
-import { getToolMouseTui } from "../mouse/scroll.ts";
 import { mcpToolTitle } from "./mcp-title.ts";
 import { collapseHintText, isToolTuiFullscreen, showMoreHintText } from "./names.ts";
 import { stripAnsi, stripBackgroundAnsi, stripLeadingStatusIcon } from "../../utils/ansi-text.ts";
@@ -35,7 +33,6 @@ import {
 	type ToolCallSummary,
 } from "./names.ts";
 import { formatToolDuration, headTruncateToWidth, toolViewportWidth } from "./result.ts";
-import { isLiveToolCall } from "./tool-state.ts";
 import {
 	patchRegistry,
 	TOOL_GROUPING_GENERATION_KEY as GENERATION_KEY,
@@ -56,7 +53,6 @@ type Patch = {
 	generation: number;
 	lastEnabled: boolean;
 	theme?: any;
-	animationTimer: ReturnType<typeof setTimeout> | null;
 };
 
 function toolName(tool: any): string {
@@ -112,46 +108,7 @@ function status(tool: any): ToolStatus {
 function statusIcon(value: ToolStatus): string {
 	if (value === "success") return "✓";
 	if (value === "error") return "✗";
-	return toolLoadingIcon();
-}
-
-/** 等待窗口或运行中的行：spinner 逐帧变化，分组卡要跟着跳帧。 */
-function isAnimatingTool(tool: any): boolean {
-	if (status(tool) !== "pending") return false;
-	return Boolean(tool?.executionStarted) || isLiveToolCall(tool?.toolCallId);
-}
-
-function scheduleGroupAnimation(patch: Patch): void {
-	if (patch.animationTimer || !patch.active) return;
-	patch.animationTimer = setTimeout(() => {
-		patch.animationTimer = null;
-		if (!patch.active) return;
-		let needsRender = false;
-		for (const group of patch.groups) {
-			if ((group.children as any[]).some(isAnimatingTool)) {
-				group.invalidate();
-				// 分组卡不是 ToolExecutionComponent：它的 invalidate() 不会请求渲染，
-				// 不补这一步 spinner 只在别人渲染时才跳帧（并行工具下表现为卡顿/冻结）。
-				needsRender = true;
-			}
-		}
-		if (needsRender) requestAnimationRender(patch);
-	}, TOOL_LOADING_INTERVAL_MS);
-	patch.animationTimer.unref?.();
-}
-
-/** 借用子工具卡的 ui 请求一帧；子卡缺失时回退到扩展持有的 TUI 槽。 */
-function requestAnimationRender(patch: Patch): void {
-	for (const group of patch.groups) {
-		const ui = (group.children as any[]).find(
-			(tool) => typeof tool?.ui?.requestRender === "function",
-		)?.ui;
-		if (ui) {
-			ui.requestRender();
-			return;
-		}
-	}
-	getToolMouseTui()?.requestRender?.();
+	return "●";
 }
 
 function visibleLines(lines: string[]): string[] {
@@ -500,7 +457,6 @@ export class ToolGroupComponent extends Container {
 		const names = new Set(this.children.map(toolName));
 		const label = names.size === 1 ? toolTitle(this.children[0]) : "Multiple Tools";
 		const overall = groupOverallStatus(counts);
-		if ((this.children as any[]).some(isAnimatingTool)) scheduleGroupAnimation(this.patch);
 		const overallColor = overall === "pending" ? "dim" : overall;
 		// 圆点保持 dim；hover 只高亮可点击文字。
 		const hintText = this._expanded ? collapseHintText() : showMoreHintText();
@@ -683,8 +639,6 @@ export function installToolGrouping(getEnabled: () => boolean): ToolGroupingHook
 	if (previous) {
 		previous.active = false;
 		previous.enabled = () => false;
-		if (previous.animationTimer) clearTimeout(previous.animationTimer);
-		previous.animationTimer = null;
 		ungroup(previous);
 	}
 	const original = {
@@ -711,7 +665,6 @@ export function installToolGrouping(getEnabled: () => boolean): ToolGroupingHook
 		enabled: getEnabled,
 		generation: 0,
 		lastEnabled: getEnabled(),
-		animationTimer: null,
 	};
 	patch.installed = {
 		addChild: function (this: any, component: any) {
@@ -766,8 +719,6 @@ export function installToolGrouping(getEnabled: () => boolean): ToolGroupingHook
 		shutdown() {
 			if (!patch.active) return;
 			patch.active = false;
-			if (patch.animationTimer) clearTimeout(patch.animationTimer);
-			patch.animationTimer = null;
 			patch.enabled = () => false;
 			ungroup(patch);
 			if (prototype.addChild === patch.installed.addChild)

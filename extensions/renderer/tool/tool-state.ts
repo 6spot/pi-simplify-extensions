@@ -1,67 +1,8 @@
 import type { ThemeBg } from "@earendil-works/pi-coding-agent";
-import { getToolMouseTui } from "../mouse/scroll.ts";
-import { TOOL_LOADING_INTERVAL_MS, toolLoadingIcon } from "../../utils/tool-loading-icon.ts";
-
-const activeAnimationContexts = new Set<any>();
-let sharedAnimationTimer: ReturnType<typeof setTimeout> | null = null;
-
-function clearAnimation(context: any) {
-	if (context?.state) context.state.ccstyleAnimationLight = false;
-	if (!context?.state?.ccstyleAnimationScheduled) return;
-	context.state.ccstyleAnimationScheduled = false;
-	activeAnimationContexts.delete(context);
-	if (activeAnimationContexts.size === 0 && sharedAnimationTimer) {
-		clearTimeout(sharedAnimationTimer);
-		sharedAnimationTimer = null;
-	}
-}
-
-export function clearAllAnimations() {
-	for (const ctx of activeAnimationContexts) {
-		ctx.state.ccstyleAnimationScheduled = false;
-		ctx.state.ccstyleAnimationLight = false;
-	}
-	activeAnimationContexts.clear();
-	if (sharedAnimationTimer) {
-		clearTimeout(sharedAnimationTimer);
-		sharedAnimationTimer = null;
-	}
-}
-
-export function scheduleAnimation(
-	context: any,
-	options: { light?: boolean; intervalMs?: number } = {},
-) {
-	const state = (context.state ??= {});
-	// light：调用方自己在 render() 内重取 loading 帧，定时器只需请求重绘；
-	// 否则定时器走 context.invalidate()（compact 摘要等靠它重建）。
-	// 每次调用都按本次 options 写入，避免上次 light 残留后非 light 调用仍跳过 invalidate。
-	state.ccstyleAnimationLight = Boolean(options.light);
-	if (state.ccstyleAnimationScheduled) return;
-	state.ccstyleAnimationScheduled = true;
-	activeAnimationContexts.add(context);
-	if (!sharedAnimationTimer) {
-		sharedAnimationTimer = setTimeout(() => {
-			sharedAnimationTimer = null;
-			const contexts = Array.from(activeAnimationContexts);
-			activeAnimationContexts.clear();
-			const tui = getToolMouseTui();
-			const canRequestRender = typeof tui?.requestRender === "function";
-			let lightFrames = false;
-			for (const ctx of contexts) {
-				ctx.state.ccstyleAnimationScheduled = false;
-				if (ctx.state.ccstyleAnimationLight && canRequestRender) lightFrames = true;
-				else ctx.invalidate?.();
-			}
-			if (lightFrames) tui.requestRender();
-		}, options.intervalMs ?? TOOL_LOADING_INTERVAL_MS);
-	}
-}
-
 /**
  * 本回合流式消息里出现过的工具调用。Pi 要等整条 assistant 消息结束才派发执行，
- * 这段窗口工具行已经在等启动，spinner 该逐帧转。
- * 恢复或翻历史重建的旧行不在这个集合里，保持静止。
+ * 这段窗口仍属于活动输出，不能提前按已完成内容缓存。
+ * 恢复或翻历史重建的旧行不在这个集合里，继续复用已完成内容缓存。
  */
 const liveToolCalls = new Set<string>();
 
@@ -89,7 +30,7 @@ export function isLiveToolCall(toolCallId: unknown): boolean {
 }
 
 export function pendingIcon(_name: string): string {
-	return toolLoadingIcon();
+	return "●";
 }
 
 type ToolVisualState = "pending" | "success" | "error";
@@ -142,7 +83,6 @@ export function settledIcon(name: string, state: ToolVisualState | undefined): s
 
 export function setToolVisualState(context: any, visualState: ToolVisualState) {
 	const state = (context.state ??= {});
-	if (visualState !== "pending") clearAnimation(context);
 	if (state.ccstyleToolVisualState === visualState) return;
 	state.ccstyleToolVisualState = visualState;
 	// Do not invalidate synchronously from renderResult. Pi is already rendering

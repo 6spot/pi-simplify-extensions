@@ -33,7 +33,7 @@
 		"muted": "fgMuted",
 		"dim": "fgSubtle",
 		"text": "fg",
-		"thinkingText": "fgMuted",
+		"thinkingText": "#3C609F",
 		"selectedBg": "selection",
 		"scrollbarTrack": "borderMuted",
 		"scrollbarThumb": "#7B8999",

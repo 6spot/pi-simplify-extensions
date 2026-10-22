@@ -277,13 +277,12 @@ function installGlobalToolRendering(
 			return originalRender.call(this, width);
 		}
 		const cache = patch.paintCache;
-		// A running partial tool owns a time-varying spinner. Light animation ticks
-		// request a repaint without invalidating the component, so settled-content
-		// caching must not intercept those paints. The waiting window before the
-		// tool is dispatched animates too, so it must bypass the cache as well.
-		const animatingRow =
+		// Live partial output and elapsed time can change without invalidation.
+		// Keep those rows fresh when Working requests a repaint, including the
+		// waiting window before dispatch; settled rows still reuse their cache.
+		const livePartialRow =
 			this.isPartial && (this.executionStarted || isLiveToolCall(this.toolCallId));
-		const cacheable = !animatingRow;
+		const cacheable = !livePartialRow;
 		const hit = cacheable ? cache?.get(this) : undefined;
 		if (hit && toolPaintMatches(hit, this, width)) return hit.lines;
 		const lines = originalRender.call(this, width);
