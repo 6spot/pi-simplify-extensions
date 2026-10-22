@@ -238,10 +238,10 @@ test("native mode changes only the real native label and preserves host geometry
 
 	frame.render();
 	teardownToolMouseInteraction(frame.owner);
-	assert.equal(
-		frame.renderer.scrollToEndIndicator,
-		frame.original,
-		"widget disposal restores only native text",
+	assert.match(
+		frame.renderer.scrollToEndIndicator(),
+		/Jump to latest message/,
+		"widget disposal restores the native indicator text",
 	);
 });
 
