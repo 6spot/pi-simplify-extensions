@@ -43,8 +43,7 @@
 		"lint": "biome check ."
 	},
 	"dependencies": {
-		"@shikijs/cli": "^4.0.2",
-		"jiti": "^2.7.0"
+		"@shikijs/cli": "^4.0.2"
 	},
 	"bundledDependencies": [],
 	"peerDependencies": {
@@ -58,6 +57,7 @@
 	"devDependencies": {
 		"@biomejs/biome": "2.5.5",
 		"@types/node": "^26.1.1",
-		"typescript": "^5.9.3"
+		"typescript": "^5.9.3",
+		"jiti": "^2.7.0"
 	}
 }

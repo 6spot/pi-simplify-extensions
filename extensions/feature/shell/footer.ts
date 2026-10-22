@@ -332,10 +332,13 @@ const createCustomFooterFactory =
 				}
 			})();
 		};
-		refreshCurrentUsage = refreshUsage;
-		refreshUsage();
-		const usageRefreshTimer = setInterval(refreshUsage, USAGE_REFRESH_INTERVAL_MS);
-		usageRefreshTimer.unref?.();
+		// Only query external usage when the chip is actually displayed.
+		const keys = [...config.footerLine1Keys, ...config.footerLine2Keys, ...config.footerLine3Keys];
+		const showUsage = keys.includes(PI_USAGE_KEY);
+		refreshCurrentUsage = showUsage ? refreshUsage : undefined;
+		if (showUsage) refreshUsage();
+		const usageRefreshTimer = showUsage ? setInterval(refreshUsage, USAGE_REFRESH_INTERVAL_MS) : undefined;
+		usageRefreshTimer?.unref?.();
 
 		// 内置 MCP 的状态不经 setStatus 暴露，只能轮询 pi API 与 mcp.json 推算
 		const refreshMcp = () => {
@@ -347,10 +350,12 @@ const createCustomFooterFactory =
 			cachedMcpChip = next;
 			tui.requestRender();
 		};
-		refreshCurrentMcpChip = refreshMcp;
-		refreshMcp();
-		const mcpRefreshTimer = setInterval(refreshMcp, MCP_REFRESH_INTERVAL_MS);
-		mcpRefreshTimer.unref?.();
+		// No file scans or periodic MCP polling when the footer does not show MCP.
+		const showMcp = keys.includes(MCP_STATUS_KEY);
+		refreshCurrentMcpChip = showMcp ? refreshMcp : undefined;
+		if (showMcp) refreshMcp();
+		const mcpRefreshTimer = showMcp ? setInterval(refreshMcp, MCP_REFRESH_INTERVAL_MS) : undefined;
+		mcpRefreshTimer?.unref?.();
 
 		// 分支变化时重新选择基准，并拒绝旧分支的异步查询结果。
 		const unsubBranch = footerData.onBranchChange(() => {
@@ -523,8 +528,8 @@ const createCustomFooterFactory =
 				usageAbort?.abort();
 				usageAbort = undefined;
 				clearInterval(gitRefreshTimer);
-				clearInterval(usageRefreshTimer);
-				clearInterval(mcpRefreshTimer);
+				if (usageRefreshTimer) clearInterval(usageRefreshTimer);
+				if (mcpRefreshTimer) clearInterval(mcpRefreshTimer);
 				unsubBranch();
 				if (currentTui === tui) {
 					currentTui = undefined;
