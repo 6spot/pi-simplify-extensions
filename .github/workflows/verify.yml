@@ -12,4 +12,7 @@ jobs:
           node-version: "24"
       - run: npm install --no-audit --no-fund
       - run: npm run typecheck
+      - run: |
+          git config --global user.name "CI Fixture"
+          git config --global user.email "ci-fixture@example.invalid"
       - run: npm test

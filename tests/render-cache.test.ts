@@ -105,7 +105,7 @@ test("展开卡 Input：代码块语法着色，折行续行跟着源码缩进",
 	assert.ok(!plain.some((line) => line.includes("code:")), "不再显示 code: 标签");
 
 	// 代码行按语法上色（打底用 cli-highlight 的语法色），不再整行单色
-	const spans = new Set(rows[1]!.match(/\x1b\[38;2;\d+;\d+;\d+m/g) ?? []);
+	const spans = new Set(rows[1]!.match(/\x1b\[38;(?:2;\d+;\d+;\d+|5;\d+)m/g) ?? []);
 	assert.ok(spans.size > 1, `代码行应有多种语法色: ${[...spans].join(" ")}`);
 
 	// 全量预览用：整段就是代码时给出围栏信息
