@@ -67,7 +67,6 @@ async function bootExtension(ui: any) {
 				events.set(name, handler);
 			},
 		} as any,
-		{ mode: "on" },
 	);
 	const ctx = { mode: "tui", hasUI: true, ui } as any;
 	await events.get("session_start")?.({}, ctx);

@@ -46,7 +46,7 @@ export default function claudeCodeStyle(pi: ExtensionAPI): void {
 		queueMicrotask(() => {
 			hooks.grouping.refresh(getToolMouseTui());
 			refreshMessageDisplays(getToolMouseTui());
-			ctx.ui.requestRender();
+			getToolMouseTui()?.requestRender?.();
 		});
 	});
 

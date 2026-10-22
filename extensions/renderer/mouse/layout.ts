@@ -142,7 +142,6 @@ export function collectFullscreenToolCards(
 	if (
 		isToolExecutionComponent(component) ||
 		component instanceof ToolGroupComponent ||
-		isCompactAssistantComponent(component) ||
 		component instanceof ThinkingPreviewBlock ||
 		isMessageDisplayComponent(component)
 	) {
