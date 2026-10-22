@@ -37,11 +37,9 @@ test("耗时格式：毫秒、秒、分、时", () => {
 });
 
 test("完成态：优先用 Pi 记录的 durationMs", () => {
-	const previousMode = config.mode;
 	const originalNow = Date.now;
 	let now = 1_000;
 	Date.now = () => now;
-	config.mode = "on";
 	const hooks = installDefaultMode(new WriteExecutionMetadataStore());
 	try {
 		const tool = shellTool("bash", "sh-recorded", { command: "npm test" });
@@ -61,16 +59,13 @@ test("完成态：优先用 Pi 记录的 durationMs", () => {
 	} finally {
 		Date.now = originalNow;
 		hooks.shutdown();
-		config.mode = previousMode;
 	}
 });
 
 test("完成态：没有 durationMs 时用渲染器自己的时钟", () => {
-	const previousMode = config.mode;
 	const originalNow = Date.now;
 	let now = 5_000;
 	Date.now = () => now;
-	config.mode = "on";
 	const hooks = installDefaultMode(new WriteExecutionMetadataStore());
 	try {
 		const tool = shellTool("bash", "sh-clock", { command: "npm test" });
@@ -82,16 +77,13 @@ test("完成态：没有 durationMs 时用渲染器自己的时钟", () => {
 	} finally {
 		Date.now = originalNow;
 		hooks.shutdown();
-		config.mode = previousMode;
 	}
 });
 
 test("运行中：shell 报已用时间，并且随动画 tick 更新", async () => {
-	const previousMode = config.mode;
 	const originalNow = Date.now;
 	let now = 1_000;
 	Date.now = () => now;
-	config.mode = "on";
 	const hooks = installDefaultMode(new WriteExecutionMetadataStore());
 	try {
 		const tool = shellTool("bash", "sh-run", { command: "sleep 5" });
@@ -109,15 +101,12 @@ test("运行中：shell 报已用时间，并且随动画 tick 更新", async ()
 	} finally {
 		Date.now = originalNow;
 		hooks.shutdown();
-		config.mode = previousMode;
 	}
 });
 
 test("时钟回拨不输出负数", () => {
-	const previousMode = config.mode;
 	const originalNow = Date.now;
 	Date.now = () => 5_000;
-	config.mode = "on";
 	const hooks = installDefaultMode(new WriteExecutionMetadataStore());
 	try {
 		const tool = shellTool("bash", "sh-clock-back", { command: "ls" });
@@ -129,13 +118,10 @@ test("时钟回拨不输出负数", () => {
 	} finally {
 		Date.now = originalNow;
 		hooks.shutdown();
-		config.mode = previousMode;
 	}
 });
 
 test("非 shell 工具不报耗时", () => {
-	const previousMode = config.mode;
-	config.mode = "on";
 	const hooks = installDefaultMode(new WriteExecutionMetadataStore());
 	try {
 		const tool = shellTool("read", "rd-1", { path: "a.ts" });
@@ -149,13 +135,10 @@ test("非 shell 工具不报耗时", () => {
 		assert.doesNotMatch(render(tool)[1]!, /\d+(\.\d+)?(ms|s)\b/);
 	} finally {
 		hooks.shutdown();
-		config.mode = previousMode;
 	}
 });
 
 test("restore 出来的行没跑过，不报耗时", () => {
-	const previousMode = config.mode;
-	config.mode = "on";
 	const hooks = installDefaultMode(new WriteExecutionMetadataStore());
 	try {
 		const tool = shellTool("bash", "sh-restored", { command: "ls" });
@@ -164,13 +147,10 @@ test("restore 出来的行没跑过，不报耗时", () => {
 		assert.doesNotMatch(render(tool)[1]!, /\d+(\.\d+)?(ms|s)\b/);
 	} finally {
 		hooks.shutdown();
-		config.mode = previousMode;
 	}
 });
 
 test("restore 的行若带 durationMs，照旧报耗时", () => {
-	const previousMode = config.mode;
-	config.mode = "on";
 	const hooks = installDefaultMode(new WriteExecutionMetadataStore());
 	try {
 		const tool = shellTool("bash", "sh-restored-2", { command: "ls" });
@@ -183,13 +163,10 @@ test("restore 的行若带 durationMs，照旧报耗时", () => {
 		assert.match(render(tool)[1]!, /2\.5s/);
 	} finally {
 		hooks.shutdown();
-		config.mode = previousMode;
 	}
 });
 
 test("展开态：Output 截断时，耗时接在 show-more 行上、提示前", () => {
-	const previousMode = config.mode;
-	config.mode = "on";
 	const hooks = installDefaultMode(new WriteExecutionMetadataStore());
 	try {
 		const tool = shellTool("bash", "sh-expanded-trunc", { command: "npm test" });
@@ -220,13 +197,10 @@ test("展开态：Output 截断时，耗时接在 show-more 行上、提示前",
 		);
 	} finally {
 		hooks.shutdown();
-		config.mode = previousMode;
 	}
 });
 
 test("展开态：Output 未截断时，耗时单独成行", () => {
-	const previousMode = config.mode;
-	config.mode = "on";
 	const hooks = installDefaultMode(new WriteExecutionMetadataStore());
 	try {
 		const tool = shellTool("bash", "sh-expanded-short", { command: "npm test" });
@@ -254,13 +228,10 @@ test("展开态：Output 未截断时，耗时单独成行", () => {
 		assert.match(lines.at(-1)!, /^\s*1\.2s$/, `耗时应是最后一行: ${JSON.stringify(lines.at(-3))}`);
 	} finally {
 		hooks.shutdown();
-		config.mode = previousMode;
 	}
 });
 
 test("展开态：非 shell 不加尾部行", () => {
-	const previousMode = config.mode;
-	config.mode = "on";
 	const hooks = installDefaultMode(new WriteExecutionMetadataStore());
 	try {
 		const tool = shellTool("read", "rd-expanded", { path: "a.ts" });
@@ -280,16 +251,13 @@ test("展开态：非 shell 不加尾部行", () => {
 		);
 	} finally {
 		hooks.shutdown();
-		config.mode = previousMode;
 	}
 });
 
 test("powershell 与 pwsh 同样报耗时", () => {
-	const previousMode = config.mode;
 	const originalNow = Date.now;
 	let now = 1_000;
 	Date.now = () => now;
-	config.mode = "on";
 	const hooks = installDefaultMode(new WriteExecutionMetadataStore());
 	try {
 		for (const name of ["powershell", "pwsh"]) {
@@ -303,6 +271,5 @@ test("powershell 与 pwsh 同样报耗时", () => {
 	} finally {
 		Date.now = originalNow;
 		hooks.shutdown();
-		config.mode = previousMode;
 	}
 });

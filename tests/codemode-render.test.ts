@@ -423,8 +423,6 @@ test("调用行：codemode 只报工具名，代码不进标题（其他工具�
 });
 
 test("单工具卡：子调用树线与标题勾对齐", () => {
-	const previousMode = config.mode;
-	config.mode = "on";
 	const hooks = installDefaultMode(new WriteExecutionMetadataStore());
 	try {
 		const tool = new ToolExecutionComponent(
@@ -450,6 +448,5 @@ test("单工具卡：子调用树线与标题勾对齐", () => {
 		assert.equal(branchLine?.indexOf("├"), checkColumn, "子调用树线应与勾对齐");
 	} finally {
 		hooks.shutdown();
-		config.mode = previousMode;
 	}
 });

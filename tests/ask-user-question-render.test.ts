@@ -150,8 +150,6 @@ function toolUi() {
 }
 
 test("单工具卡：标题带问题数，结果是问答树", () => {
-	const previousMode = config.mode;
-	config.mode = "on";
 	const hooks = installDefaultMode(new WriteExecutionMetadataStore());
 	try {
 		const tool = new ToolExecutionComponent(
@@ -181,7 +179,6 @@ test("单工具卡：标题带问题数，结果是问答树", () => {
 		);
 	} finally {
 		hooks.shutdown();
-		config.mode = previousMode;
 	}
 });
 

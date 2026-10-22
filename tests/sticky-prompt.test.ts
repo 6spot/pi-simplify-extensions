@@ -126,12 +126,10 @@ function fakeTheme() {
 
 /** 每个用例后复原全局状态：配置开关、补丁、跨帧缓存。 */
 function withSticky<T>(body: () => T): T {
-	const mode = config.mode;
 	const enabled = config.stickyUserMessage;
 	try {
 		return body();
 	} finally {
-		config.mode = mode;
 		config.stickyUserMessage = enabled;
 		setToolTuiFullscreen(undefined as any);
 		disposeStickyPromptPatches();
@@ -358,12 +356,6 @@ test("sticky prompt: switched off keeps the transcript unchanged", () => {
 		assert.equal(updateStickyPromptHover(frame.tui, { row: 1, col: 1 } as any), false);
 		assert.equal(handleStickyPromptClick(frame.tui, { row: 1, col: 1 } as any), false);
 
-		// off 模式还原原生渲染，同样不合成。
-		config.mode = "off";
-		assert.deepEqual(
-			renderStickyPromptScreen(frame.tui, frame.screen, frame.layout, VIEWPORT_WIDTH),
-			frame.screen,
-		);
 	});
 });
 

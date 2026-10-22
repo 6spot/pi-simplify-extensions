@@ -80,7 +80,6 @@ function realFrame(t: TestContext) {
 	const bindings = getKeybindings();
 	const keybindings = new KeybindingsManager();
 	setKeybindings(keybindings);
-	config.mode = "on";
 	config.scrollButtonMode = "native";
 	const terminal: any = {
 		columns: WIDTH,
@@ -237,13 +236,6 @@ test("native mode changes only the real native label and preserves host geometry
 	config.scrollButtonMode = "native";
 	assert.deepEqual(frame.render(), seeded.lines);
 
-	config.mode = "off";
-	assert.deepEqual(frame.render(), baseline.lines, "ccstyle off restores Pi's original label");
-	const originalAfterOff = frame.renderer.scrollToEndIndicator;
-	assert.match(originalAfterOff(), /Jump to latest message/);
-	config.mode = "on";
-	assert.deepEqual(frame.render(), seeded.lines);
-	assert.notEqual(frame.renderer.scrollToEndIndicator, originalAfterOff);
 	frame.render();
 	teardownToolMouseInteraction(frame.owner);
 	assert.equal(

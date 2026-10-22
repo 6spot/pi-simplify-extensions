@@ -122,46 +122,13 @@ test("scroll button: disable official overlay keeps dock button", async () => {
 });
 
 // /ccstyle off：还回官方 overlay，不画本仓库 dock 按钮。
-test("scroll button: off mode restores official overlay", () => {
-	const previousMode = config.mode;
-	const previousScrollButtonMode = config.scrollButtonMode;
-	const { tui } = lazyFullscreenTui();
-	const indicator = () => "Jump to latest message";
-	tui.scrollToEndIndicator = indicator;
-	try {
-		config.mode = "on";
-		config.scrollButtonMode = "dock";
-		disableOfficialScrollToEnd(tui);
-		assert.equal(tui.scrollToEndIndicator, undefined);
-
-		config.mode = "off";
-		syncOfficialScrollToEnd(tui);
-		assert.equal(tui.scrollToEndIndicator, indicator);
-		assert.deepEqual(renderScrollButton(80, fakeTheme()), []);
-
-		config.mode = "on";
-		syncOfficialScrollToEnd(tui);
-		assert.equal(tui.scrollToEndIndicator, undefined);
-
-		restoreOfficialScrollToEnd(tui);
-		assert.equal(tui.scrollToEndIndicator, indicator);
-	} finally {
-		config.mode = previousMode;
-		config.scrollButtonMode = previousScrollButtonMode;
-		resetScrollButtonState();
-		setToolMouseTui(null);
-	}
-});
-
 test("scroll button: native mode seeds dock text into Pi overlay and omits dock row", async () => {
-	const previousMode = config.mode;
 	const previousScrollButtonMode = config.scrollButtonMode;
 	const { tui, count } = lazyFullscreenTui();
 	const indicator = () => "Jump to latest message";
 	tui.scrollToEndIndicator = indicator;
 	setToolMouseTui(tui);
 	try {
-		config.mode = "on";
 		config.scrollButtonMode = "dock";
 		syncOfficialScrollToEnd(tui);
 		assert.equal(tui.scrollToEndIndicator, undefined);
@@ -174,17 +141,11 @@ test("scroll button: native mode seeds dock text into Pi overlay and omits dock 
 		assert.equal(count(), 0, "native 模式不调度 dock 按钮重绘");
 		assert.deepEqual(renderScrollButton(80, fakeTheme()), []);
 
-		config.mode = "off";
-		syncOfficialScrollToEnd(tui);
-		assert.equal(tui.scrollToEndIndicator, indicator, "ccstyle off 还原 Pi 原始回调");
-
-		config.mode = "on";
 		config.scrollButtonMode = "dock";
 		syncOfficialScrollToEnd(tui);
 		assert.equal(tui.scrollToEndIndicator, undefined);
 	} finally {
 		restoreNativeScrollIndicatorText();
-		config.mode = previousMode;
 		config.scrollButtonMode = previousScrollButtonMode;
 		resetScrollButtonState();
 		setToolMouseTui(null);

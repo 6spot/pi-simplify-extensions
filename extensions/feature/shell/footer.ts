@@ -2,7 +2,7 @@
  * One-line, icon-free personal status bar.
  * No status chip registry, external quota polling, configuration panel or extra rows.
  */
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { formatTokenCount } from "../../utils/format.ts";
 import { inputTextIndent } from "./prompt-editor.ts";
@@ -21,7 +21,7 @@ export type FooterParts = {
 	git?: GitStats;
 };
 
-type FooterTheme = { fg: (color: string, text: string) => string };
+type FooterTheme = Pick<Theme, "fg">;
 
 function gitChanges(git: GitStats | undefined): string {
 	if (!git || (!git.add && !git.del)) return "";

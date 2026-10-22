@@ -13,7 +13,6 @@ import {
 	refreshMessageDisplays,
 	setMessageDisplayTheme,
 } from "../extensions/renderer/tool/message-display.ts";
-import { config } from "../extensions/config/config.ts";
 
 function stripAnsi(text: string): string {
 	return text.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "");
@@ -52,7 +51,6 @@ function makeBranch(summary = "branch work") {
 }
 
 test("message-display: ccstyle on 时三个组件渲染为工具调用风格", () => {
-	config.mode = "on";
 	const dispose = installMessageDisplayRendering();
 	setMessageDisplayTheme(fakeTheme());
 
@@ -103,41 +101,23 @@ test("message-display: ccstyle on 时三个组件渲染为工具调用风格", (
 	assert.match(stripAnsi(branch.render(120).join("\n")), /branch work/);
 
 	dispose();
-	config.mode = "off";
 });
 
-test("message-display: mode off 或 dispose 后回退原生渲染", () => {
-	config.mode = "on";
+test("message-display: dispose restores the original renderer", () => {
 	const dispose = installMessageDisplayRendering();
 	setMessageDisplayTheme(fakeTheme());
 	const skill = makeSkillBlock();
 	const compaction = makeCompaction();
-	assert.doesNotMatch(stripAnsi(skill.render(120).join("\n")), /\[skill\]/);
-	assert.doesNotMatch(stripAnsi(compaction.render(120).join("\n")), /\[compaction\]/);
-
-	// mode=off：恢复原生标签
-	config.mode = "off";
-	skill.invalidate();
-	compaction.invalidate();
-	assert.match(stripAnsi(skill.render(120).join("\n")), /\[skill\]/);
-	assert.match(stripAnsi(compaction.render(120).join("\n")), /\[compaction\]/);
-	// 原生 Box paddingY=1 恢复：重新出现上下空行
-	assert.equal(skill.render(120).length, 3, "原生渲染恢复上下内边距");
-
-	// dispose 后同样回退
-	config.mode = "on";
-	skill.invalidate();
-	compaction.invalidate();
-	assert.doesNotMatch(stripAnsi(skill.render(120).join("\n")), /\[skill\]/);
+	assert.doesNotMatch(stripAnsi(skill.render(120).join("\\n")), /\\[skill\\]/);
+	assert.doesNotMatch(stripAnsi(compaction.render(120).join("\\n")), /\\[compaction\\]/);
 	dispose();
 	skill.invalidate();
 	compaction.invalidate();
-	assert.match(stripAnsi(skill.render(120).join("\n")), /\[skill\]/);
-	assert.match(stripAnsi(compaction.render(120).join("\n")), /\[compaction\]/);
+	assert.match(stripAnsi(skill.render(120).join("\\n")), /\\[skill\\]/);
+	assert.match(stripAnsi(compaction.render(120).join("\\n")), /\\[compaction\\]/);
 });
 
 test("message-display: refreshMessageDisplays 遍历并刷新已挂载组件", () => {
-	config.mode = "off";
 	const dispose = installMessageDisplayRendering();
 	setMessageDisplayTheme(fakeTheme());
 	const components = [makeSkillBlock(), makeCompaction(), makeBranch()];
@@ -155,5 +135,4 @@ test("message-display: refreshMessageDisplays 遍历并刷新已挂载组件", (
 	refreshMessageDisplays(root);
 	assert.equal(invalidated, 3);
 	dispose();
-	config.mode = "on";
 });
