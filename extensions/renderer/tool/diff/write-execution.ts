@@ -37,7 +37,7 @@ export class WriteExecutionMetadataStore {
 	}
 }
 
-async function capturePreviousContent(absolutePath: string): Promise<WriteExecutionMeta> {
+export async function capturePreviousContent(absolutePath: string): Promise<WriteExecutionMeta> {
 	let info;
 	try {
 		info = await lstat(absolutePath);

@@ -24,7 +24,7 @@ import {
 	animateCompactThinkingText,
 	formatThoughtDuration,
 	styleCompactThinkingText,
-} from "../renderer/compact-mode.ts";
+} from "../renderer/thinking-style.ts";
 import { refreshMountedTranscript } from "../renderer/transcript-refresh.ts";
 import {
 	COMPACT_THINKING_OWNER,
