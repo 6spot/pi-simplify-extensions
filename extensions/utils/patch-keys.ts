@@ -25,6 +25,7 @@ export const TOOL_EXPANDED_BACKGROUND_PATCH = Symbol.for(
 );
 
 // ── 消息组件补丁 ──
+export const MARKDOWN_CODE_BLOCK_PATCH = Symbol.for("pi.simplify.markdown-code-block-patch");
 export const MESSAGE_DISPLAY_PATCH = Symbol.for("pi.ccstyle.message-display-patch");
 
 // ── 工具分组 ──
