@@ -1,131 +1,57 @@
-<p align="center">
-  <strong>简体中文</strong> · <a href="./README.en.md">English</a>
-</p>
+# Pi Simplify Extensions
 
-# pi-cc-extensions
+个人使用的 Pi TUI 展示扩展，基于 [minuque/pi-cc-extensions](https://github.com/minuque/pi-cc-extensions) 精简。
 
-> 类 Claude Code TUI 输出风格，并融入了一些个人喜好，和一些实用小功能（无额外内置工具）。
+## 保留的功能
 
-## 界面预览
+- Claude Code 风格工具卡、工具分组、点击展开与收起、Rich Diff
+- Compact Thinking 思考预览（不再提供整回合 Compact Mode）
+- Codex 风格输入框：灰色背景、无上下横线、保留原生编辑能力
+- 独立在输入框上方的 Working 状态，显示当前工具操作、Token 数量和耗时
+- 简洁 Footer：模型 / 上下文 / 费用；目录 / Git
+- Fullscreen 鼠标操作、回到底部、顶部固定用户消息
+- `/context` 上下文查看
+- 官方 Pi 启动欢迎页，不替换 Logo
 
-<a href="https://github.com/user-attachments/assets/6c858000-fdad-43f9-957f-4d0278648498"><img src="./assets/readme/preview.webp" alt="pi-cc-extensions 界面预览" width="100%"></a>
-
-点击封面播放演示视频
-
-## 快速开始
+## 安装与测试
 
 ```bash
-pi install npm:pi-cc-extensions
-
-# GitHub
-pi install git:github.com/minuque/pi-cc-extensions
+pi install git:github.com/6spot/pi-simplify-extensions
+# 安装或更新后
+/reload
 ```
 
-安装后执行 `/reload`
+本地开发可以在项目目录运行 `pi -e .`、`npm run typecheck` 和 `npm test`。
 
-## 功能
-
-| 功能                  | 说明                                                                            | 入口                                            |
-| --------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------- |
-| Claude Code UI        | 工具摘要、折叠展开、rich edit/write diff，以及`on` / `compact` / `off` 三种模式 | `/ccstyle`                                      |
-| Markdown 增强         | Mermaid 方言渲染、圈数字转半角括号                                                         | 自动生效；`enableMarkdownEnhance: false` 关闭   |
-| Fullscreen mode       | 工具卡/group 单击展开与收起、预览、hover 高亮、回到底部按钮                 | `TUIMODE=fullscreen` 或 `--tui-mode fullscreen` |
-| 配置面板              | `Style / Features / UI / Diff / Thinking / Footer` 六页签                       | `/ccstyle`                                      |
-| 上下文检查            | 查看上下文占用，并预览 System prompt、Memory、Skills、Tools definition 和消息内容 | `/context`                                      |
-| Session/Subagent 引用 | 搜索并注入历史 Session 或现有 SubAgent 的有效上下文                             | `@`                                             |
-| 状态栏                | 显示：模型、上下文、缓存、费用、git并适配 @narumitw/pi-usage 实时显示额度；git/缓存图标可关 Nerd Font | `/ccstyle`                              |
-| 主题                  | 随包提供内置 CC Dark、CC Light 主题                                             | `/settings` → Theme                             |
-
-`on` / `compact` 两种模式的渲染样例：[默认模式](./docs/tool-render-examples-default.md) · [紧凑模式](./docs/tool-render-examples-compact.md)
+在 Pi 的 `/settings` 中切换主题 `simplify-dark` 或 `simplify-light`。
 
 ## 配置
 
-`/ccstyle` 的行为由 `~/.pi/agent/pi-cc-extensions.json` 配置：
+个人固定风格，不再提供 `/ccstyle` 设置面板，也不读取旧的 `~/.pi/agent/pi-cc-extensions.json`。
 
-```jsonc
+仅修改仓库根目录的 `simplify.json`：
+
+```json
 {
-  // style
-  "mode": "on",                            // on / compact / off
-  "excludeRenderers": [],                  // 走原生渲染的工具名；Agent 始终保留专用渲染器
-
-  // features
-  "enableSessionReference": true,          // @ session 引用
-  "enableSubagentAutocomplete": true,      // @subagent:[name] 补全与委派提示
-  "enableContextCommand": true,            // /context 上下文检查
-  "enableAgentSummary": true,              // 每回合工具摘要
-  "enableWorkingMessage": true,            // Working... 底部 token/耗时
-  "enableAliases": true,                   // /clear、/exit 别名
-  "enableMarkdownEnhance": true,           // markdown 转换：Mermaid 方言渲染、圈数字转半角括号；false 让位给其他扩展
-  "enableEditorPrefix": true,              // 输入框 ❯ 前缀
-
-  // ui
-  "expandedInputMaxLines": 5,              // 展开工具卡 Input 可见行数，超出在末行显示展开提示
-  "expandedOutputMaxLines": 10,            // 展开工具卡 Output 可见行数，超出在末行显示展开提示
-  "expandedPreviewMaxLines": 40,           // 展开 TaskList 正文最大行数（展开 diff 始终全量）
-  "toolLabelClip": 0,                      // 工具摘要 path/command 折叠字符数；0 = 按可用宽度
-  "showStartupHeader": true,               // 启动头（logo + tips）开关
-  "stickyUserMessage": true,               // fullscreen：userMessage 正文首行滚出视口上沿后钉住，直到下一条指令接手
-  "scrollButtonMode": "dock",              // fullscreen：dock 独占行 / native Pi 原生浮层
-
-  // diff
-  "diffViewMode": "auto",                  // 布局：auto / split / unified
-  "diffIndicatorMode": "bars",             // 变更指示：bars / classic / none
-  "diffSplitMinWidth": 120,                // 左右分栏的最小终端宽度
-  "editDiffCollapsedLines": 24,            // edit 折叠行数；0 仅显示变更统计摘要
-  "writeDiffCollapsedLines": 0,            // write 折叠行数，0 仅显示创建摘要
-  "diffWordWrap": true,                    // 长 diff 行换行
-
-  // thinking
-  "useSummaryTitlesAsThinkingTitle": true, // 用最新摘要作思考标题
-  "previewLines": 3,                       // 预览行数，0 隐藏
-  "animationIntervalMs": 90,               // 标题动画间隔（毫秒）
-
-  // footer
-  "enableCustomFooter": true,              // 自定义状态栏
-  "footerTokenRate": true,                 // 输出速率芯片；false 隐藏
-  "footerTokenRateMode": "average",        // average：整段指令平均（avg）；live：最近 1 秒瞬时（live）
-  "footerTokenRateTtft": true,             // 速率芯片是否带 TTFT；false 只显示 tok/s
-  "footerCurrency": "USD",                 // 底栏费用的显示币种
-  "footerCurrencyRate": null,              // 1 单位费用换成多少显示币种；null 只换符号、不乘倍率
-  "footerNerdIcons": true,                 // git/缓存用 Nerd Font 图标；false 为纯文本
-  "footerGitStatsMode": "working",         // working（默认）：未提交改动；branch：分支累计净改动
-  "footerHiddenKeys": [],                  // 隐藏的芯片 key
-  "footerLine1Keys": ["model", "context", "cache", "rate", "cost", "pi-usage"], // 每行芯片顺序；内置项与插件同一套排布
-  "footerLine2Keys": ["cwd", "git"],        // cwd：目录和会话名；git：分支和改动。可换到任意行
-  "footerLine3Keys": []                    // 有可见芯片才占行
+  "diff": { "view": "auto", "collapsedEditLines": 12 },
+  "thinking": { "previewLines": 3 },
+  "footer": {
+    "line1": ["model", "context", "cost"],
+    "line2": ["cwd", "git"]
+  }
 }
 ```
 
-> [!TIP]
-> **全屏模式**：展开态 diff 全量显示。Input/Output 超行时末行给 `… +N more lines`，单击看全量，再击收起。
+配色通过 `themes/simplify-dark.json`、`themes/simplify-light.json` 修改。
 
-> [!NOTE]
-> **Mermaid 渲染**：`markdown.mermaid` 建议设为 `final`（`~/.pi/agent/settings.json` 或 `/settings`）。默认 `streaming` 逐帧重绘，`final` 只渲染最终版。
+## 与 SoL-Pi 一起使用
 
-## 本地开发
+本扩展**不会重新注册或接管 `write` 工具**。写入前的文件快照由 `tool_execution_start` 事件读取，展示层仅使用这些快照渲染 Write Diff；因此不会与 SoL-Pi Action Fusion 争夺 `write` 的工具所有权。
 
-```bash
-./test.sh            # macOS/Linux，需要 node 和 pi
-./test.bat           # Windows，经 Git Bash 运行 test.sh
-pi -e .              # 只跑一次，不改 settings.json
-```
+如果写入前的内容无法安全读取、写入执行失败或上游工具没有提供可比较数据，则回退普通结果显示。执行结果完全由 Pi / SoL-Pi 决定。真正的取消、压缩与错误信息不会被隐藏。
 
-## 兼容性
+## 上游更新
 
-- Node.js `>=22.19.0`，Pi `^0.84.0`
+保留 Fork 关系；只选择性移植上游需要的功能或修复，不直接全量 Sync Fork。
 
-## 推荐搭配
-
-| 扩展                                     | 用途                                             |
-| ---------------------------------------- | ------------------------------------------------ |
-| `npm:pi-web-access`                      | 网页搜索、URL 抓取、GitHub 克隆、PDF/视频解析    |
-| `npm:@narumitw/pi-usage`                 | 查看当前账号用量（Codex / Copilot / OpenRouter） |
-| `npm:@juicesharp/rpiv-ask-user-question` | 模型拿不准时向你提问的选择题面板                 |
-
-## 致谢
-
-- Rich diff 改编自 [`MasuRii/pi-tool-display`](https://github.com/MasuRii/pi-tool-display)（MIT）；详见 [`extensions/renderer/tool/diff/ATTRIBUTION.md`](./extensions/renderer/tool/diff/ATTRIBUTION.md)。
-
-## 许可证
-
-[MIT](./LICENSE) © minuque
+感谢原作者和 Rich Diff 相关贡献者，许可证为 MIT。详见 [LICENSE](LICENSE) 和 [Diff 致谢](extensions/renderer/tool/diff/ATTRIBUTION.md)。

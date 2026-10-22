@@ -7,11 +7,6 @@ import {
 	TOOL_MOUSE_OWNER_KEY,
 } from "../../utils/patch-keys.ts";
 import { ToolGroupComponent } from "../tool/grouping.ts";
-import {
-	isCompactAssistantComponent,
-	markCompactRoundToolExpanded,
-	setHoveredCompactAssistant,
-} from "../compact-mode.ts";
 import { isMessageDisplayComponent } from "../tool/message-display.ts";
 import { isLazyProxyTui } from "../../utils/fullscreen-detect.ts";
 import { setToolTuiFullscreen, isCollapseHintLine } from "../tool/names.ts";
@@ -225,7 +220,6 @@ function clearHoverState(): void {
 	setHoveredThinking(null);
 	setHoveredMessageDisplay(null);
 	setHoveredToolIo(null, null);
-	setHoveredCompactAssistant(null);
 }
 
 /** 收起一张展开卡（group 的 setExpanded 会传播到内部工具）。 */
@@ -255,7 +249,7 @@ function resolveCollapsePress(tui: any, packet: SgrMousePacket): any {
 	if (Date.now() - press.at > COLLAPSE_CLICK_MAX_MS) return undefined;
 	const card = press.card;
 	if (
-		(card instanceof ToolGroupComponent || isCompactAssistantComponent(card)) &&
+		card instanceof ToolGroupComponent &&
 		press.component !== card
 	) {
 		// 点击落在卡内工具行：官方 click 会对同一次点击再次 toggle，吞掉它。
@@ -408,10 +402,9 @@ function handleFullscreenToolClick(tui: any, packet: SgrMousePacket): boolean {
 	if (typeof line !== "string" || /\x1b]8;[^;]*;/.test(line)) return false;
 	const isTool = isToolExecutionComponent(component);
 	const isGroup = component instanceof ToolGroupComponent;
-	const isAssistant = isCompactAssistantComponent(component);
 	const isThinking = component instanceof ThinkingPreviewBlock;
 	const isMessage = isMessageDisplayComponent(component);
-	if (!isTool && !isGroup && !isAssistant && !isThinking && !isMessage) return false;
+	if (!isTool && !isGroup && !isThinking && !isMessage) return false;
 	if (!component.expanded) {
 		// collapsed 仅按钮文本可展开，不能把同一行正文/留白变成点击区。
 		// thinking 例外：标题行（标题、隐藏行数与提示同一行）整行都是展开入口。
@@ -434,22 +427,13 @@ function handleFullscreenToolClick(tui: any, packet: SgrMousePacket): boolean {
 				// 展开 round 卡内 thinking/工具时，外层 compact 卡是它的容器，不能收起。
 				// 面板挂在摘要行时，anchor 与摘要行是同一张外层卡，点内部工具不能收起它。
 				// 同一回合的摘要行、anchor 和其他消息都是外层面板，收起任一个都会关掉整块。
-				if ((isThinking || isTool) && isSameExpandedRound(other, target.owner)) continue;
 				other.setExpanded(false);
 				other.invalidate?.();
 			}
 		}
 		// 展开 round 卡内工具时，让 compact 的强制折叠放行它（非 round 内工具为空操作）。
-		if (isTool) markCompactRoundToolExpanded(component);
-		if (isAssistant) {
-			// compact 摘要行自己记展开前的视口（收起时还原跟随），所以它先展开再停跟随：
-			// 顺序反了快照会记下「未跟随」，收起时就交不回官方 follow。
-			component.setExpanded(true);
-			keepViewportOnExpand(tui);
-		} else {
-			keepViewportOnExpand(tui);
-			component.setExpanded(true);
-		}
+		keepViewportOnExpand(tui);
+		component.setExpanded(true);
 		clearPendingCollapsePress();
 	} else {
 		// 普通工具截断头 show-more：打开全量预览（不收起）。
@@ -483,17 +467,9 @@ function handleFullscreenToolClick(tui: any, packet: SgrMousePacket): boolean {
 	setHoveredThinking(null);
 	setHoveredMessageDisplay(null);
 	setHoveredToolIo(null, null);
-	setHoveredCompactAssistant(null);
 	(target.group ?? component).invalidate?.();
 	tui.requestRender?.();
 	return true;
-}
-
-/** 点到的组件和外层卡是否属于同一张 compact 回合面板。 */
-function isSameExpandedRound(other: any, owner: any): boolean {
-	if (!owner || !isCompactAssistantComponent(other)) return false;
-	const anchor = owner.roundAnchor ?? owner;
-	return other === owner || other === anchor || other.roundAnchor === anchor;
 }
 
 /**
@@ -570,9 +546,6 @@ function handleFullscreenToolHover(tui: any, packet: SgrMousePacket): void {
 				} else if (overHint) {
 					target = { kind: "tool", component, view, section };
 				}
-			} else if (isCompactAssistantComponent(component)) {
-				// compact 摘要行：折叠时仅提示文字高亮，展开卡整体高亮。
-				if (component.expanded || overHint) target = { kind: "assistant", component };
 			} else if (isMessageDisplayComponent(component)) {
 				if (overHint) target = { kind: "message", component };
 			}
@@ -1062,7 +1035,6 @@ export function teardownToolMouseInteraction(
 	setHoveredThinking(null);
 	setHoveredMessageDisplay(null);
 	setHoveredToolIo(null, null);
-	setHoveredCompactAssistant(null);
 	releaseToolCardMouseGuard();
 	clearPendingCollapsePress();
 	suppressOfficialCardClickUntil = 0;
@@ -1092,7 +1064,6 @@ export function resetToolHoverState(): void {
 	setHoveredToolCallId(null);
 	setHoveredThinking(null);
 	setHoveredMessageDisplay(null);
-	setHoveredCompactAssistant(null);
 	setScrollButtonVisible(false);
 	setScrollButtonHovered(false);
 	resetStickyPromptState();

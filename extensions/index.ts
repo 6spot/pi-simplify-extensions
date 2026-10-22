@@ -17,7 +17,7 @@ export default function (pi: ExtensionAPI): void {
 	workingMessage(pi);
 	customFooter(pi);
 	pi.on("session_start", (_event, ctx) => applyPromptEditor(ctx));
-	claudeCodeStyle(pi);
 	installCompactThinking(pi, getCompactThinkingConfig());
+	claudeCodeStyle(pi);
 	context(pi);
 }

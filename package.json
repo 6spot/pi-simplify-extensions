@@ -20,18 +20,18 @@
 	},
 	"files": [
 		"extensions",
-		"assets/readme",
 		"themes",
+		"simplify.json",
 		"README.md",
-		"README.en.md"
+		"LICENSE"
 	],
 	"pi": {
 		"extensions": [
 			"./extensions/index.ts"
 		],
 		"themes": [
-			"./themes/cc-dark.json",
-			"./themes/cc-light.json"
+			"./themes/simplify-dark.json",
+			"./themes/simplify-light.json"
 		]
 	},
 	"scripts": {

@@ -1,6 +1,5 @@
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { ThinkingPreviewBlock } from "../../feature/compact-thinking.ts";
-import { isCompactAssistantComponent } from "../compact-mode.ts";
 import { ToolGroupComponent } from "../tool/grouping.ts";
 import { isMessageDisplayComponent } from "../tool/message-display.ts";
 import { isToolExecutionComponent, stripTerminalSequencesPreservingLayout } from "./packets.ts";
@@ -121,20 +120,6 @@ export function componentAtLocalRow(
 		return child ? { ...child, group: component } : { component, row: localRow };
 	}
 	if (isToolExecutionComponent(component)) {
-		return { component, row: localRow };
-	}
-	if (isCompactAssistantComponent(component)) {
-		// 折叠：整行摘要。展开：先命中面板内 thinking/工具卡/文本，其余（空行）仍归外层卡片。
-		if (component.expanded === true) {
-			const inner = nestedChildAtRow(component, localRow, width);
-			if (inner) {
-				// 展开的 thinking 有自己的展开态：点它只收它自己，不收整块面板。
-				const ownExpandable = inner instanceof ThinkingPreviewBlock && inner.expanded === true;
-				return ownExpandable
-					? { component: inner, row: localRow }
-					: { component: inner, row: localRow, owner: component };
-			}
-		}
 		return { component, row: localRow };
 	}
 	if (component instanceof ThinkingPreviewBlock) {

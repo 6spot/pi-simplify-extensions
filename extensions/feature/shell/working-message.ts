@@ -13,6 +13,25 @@ import {
 } from "./token-rate.ts";
 
 const REFRESH_INTERVAL_MS = 1_000;
+
+function briefActivity(name: string, args: any): string {
+	const path = typeof args?.path === "string" ? args.path
+		: typeof args?.file_path === "string" ? args.file_path : "";
+	const compact = (text: string) => text.replace(/[\\x00-\\x1f\\x7f]/g, " ").trim().slice(0, 72);
+	const item = compact(path);
+	switch (name) {
+		case "read": return item ? `Reading ${item}` : "Reading files";
+		case "edit": return item ? `Editing ${item}` : "Editing files";
+		case "write": return item ? `Writing ${item}` : "Writing files";
+		case "bash":
+		case "powershell": return typeof args?.command === "string"
+			? `Running ${compact(args.command)}` : "Running command";
+		case "grep":
+		case "find":
+		case "ls": return "Searching files";
+		default: return `Running ${compact(name)}`;
+	}
+}
 /** Elapsed time is only shown once the turn has run this long. */
 const SHOW_TIMER_AFTER_MS = 3_000;
 
@@ -37,6 +56,8 @@ type WorkingUi = {
  * token 数直接读 token-rate 的累计（估算 → provider usage 同源），不再本地重数。 */
 export default function (pi: ExtensionAPI): void {
 	let turnActive = false;
+	const activeTools = new Map<string, string>();
+	let activity = "Processing";
 	let agentStartTime = 0;
 	let turnStartTime = 0;
 	/** 当前用户指令的起点；工具调用后的 turn 复用它，直到下一条指令。 */
@@ -63,7 +84,7 @@ export default function (pi: ExtensionAPI): void {
 			// formatDuration 低于 1 秒返回 ""，此处回退 "0s" 保持计时器连续跳动。
 			parts.push(formatDuration(elapsed) || "0s");
 		}
-		return parts.length ? `Working... (${parts.join(" · ")})` : "";
+		return `Working · ${[activeTools.size ? [...activeTools.values()].at(-1) : activity, ...parts].filter(Boolean).join(" · ")}`;
 	}
 
 	function workingUiAvailable(): boolean {
@@ -128,6 +149,8 @@ export default function (pi: ExtensionAPI): void {
 
 	function clearDisplay(): void {
 		stopRefreshLoop();
+		activeTools.clear();
+		activity = "Processing";
 		agentStartTime = 0;
 		turnStartTime = 0;
 		// 不重置 token-rate：footer 定格显示上一回合速率
@@ -140,6 +163,7 @@ export default function (pi: ExtensionAPI): void {
 
 	pi.on("turn_start", async (event, ctx) => {
 		turnActive = true;
+		activity = "Processing";
 		activeCtx = ctx;
 		// 事件时间戳在 handler 之前产生；用 Date.now() 会和紧随的采样落在同一毫秒，分母变成 0。
 		turnStartTime = event?.timestamp || Date.now();
@@ -161,6 +185,7 @@ export default function (pi: ExtensionAPI): void {
 		if (!evt) return;
 
 		if (evt.type === "start") {
+			activity = "Processing";
 			// 新 assistant 消息起点：速率分段已在 turn_start 处理。
 		} else if (
 			evt.type === "thinking_start" ||
@@ -170,6 +195,8 @@ export default function (pi: ExtensionAPI): void {
 			// TTFT 的首块含 toolcall_start：模型直接发起 tool call（thinking/text 省略）时也算首 token。
 			// 分段锚点只在 turn_start 重置。这里再重置会把累计 usage.output 当成新的首报。
 			markFirstToken();
+			if (evt.type === "thinking_start") activity = "Reasoning";
+			else if (evt.type === "text_start") activity = "Generating response";
 			updateProviderUsage(evt.partial);
 		} else if (
 			evt.type === "thinking_delta" ||
@@ -178,6 +205,8 @@ export default function (pi: ExtensionAPI): void {
 		) {
 			// 工具参数走 toolcall_delta；不计入的话，写长文件这类调用期间 token 一直不涨。
 			if (typeof evt.delta === "string") sampleTokenDelta(evt.delta);
+			if (evt.type === "thinking_delta") activity = "Reasoning";
+			else if (evt.type === "text_delta") activity = "Generating response";
 			updateProviderUsage(evt.partial);
 		} else if (evt.type === "text_end" || evt.type === "thinking_end") {
 			updateProviderUsage(evt.partial);
@@ -207,16 +236,23 @@ export default function (pi: ExtensionAPI): void {
 		syncWorkingMessage();
 	});
 
-	pi.on("tool_execution_start", async () => {
+	pi.on("tool_execution_start", async (event, ctx) => {
 		pauseTokenRate();
+		activeCtx = ctx;
+		activeTools.set(event.toolCallId, briefActivity(event.toolName, event.args));
+		syncWorkingMessage(true);
 	});
 
-	pi.on("tool_execution_end", async () => {
+	pi.on("tool_execution_end", async (event, ctx) => {
 		resumeTokenRate();
+		activeCtx = ctx;
+		activeTools.delete(event.toolCallId);
+		syncWorkingMessage(true);
 	});
 
 	pi.on("turn_end", async (_event, ctx) => {
 		turnActive = false;
+		activeTools.clear();
 		activeCtx = ctx;
 		stopRefreshLoop();
 		// 本段 token 结转进累计，下一段 turn 继续累加；此处不清速率。

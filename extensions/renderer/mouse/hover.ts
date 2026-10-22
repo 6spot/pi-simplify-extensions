@@ -1,5 +1,4 @@
 import { ThinkingPreviewBlock } from "../../feature/compact-thinking.ts";
-import { setHoveredCompactAssistant } from "../compact-mode.ts";
 import { patchRegistry, TOOL_HOVER_STATE_KEY } from "../../utils/patch-keys.ts";
 import {
 	isExpandedToolIoView,
@@ -116,7 +115,6 @@ export type FullscreenHoverTarget =
 	| { kind: "group"; component: ToolGroupComponent }
 	| { kind: "thinking"; component: ThinkingPreviewBlock }
 	| { kind: "message"; component: any }
-	| { kind: "assistant"; component: any }
 	| {
 			kind: "tool";
 			component: any;
@@ -141,8 +139,6 @@ export function applyFullscreenHover(tui: any, target: FullscreenHoverTarget | n
 	if (setHoveredThinking(nextThinking)) changed = true;
 	const nextMessage = target?.kind === "message" ? target.component : null;
 	if (setHoveredMessageDisplay(nextMessage)) changed = true;
-	const nextAssistant = target?.kind === "assistant" ? target.component : null;
-	if (setHoveredCompactAssistant(nextAssistant)) changed = true;
 	const nextView = target?.kind === "tool" ? target.view : null;
 	const nextSection = target?.kind === "tool" ? target.section : null;
 	if (setHoveredToolIo(nextView, nextSection)) changed = true;
