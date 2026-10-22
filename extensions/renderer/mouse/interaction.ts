@@ -1051,8 +1051,8 @@ export function teardownToolMouseInteraction(
 	}
 	restoreToolMouseRenderPatch();
 	restoreFullscreenViewportInput(getToolMouseTui());
-	restoreNativeScrollIndicatorText();
 	restoreOfficialScrollToEnd(getToolMouseTui());
+	restoreNativeScrollIndicatorText();
 	resetScrollButtonState();
 	setToolMouseTui(null);
 	toolMouseUi = null;
