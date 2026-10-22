@@ -108,13 +108,13 @@ test("message-display: dispose restores the original renderer", () => {
 	setMessageDisplayTheme(fakeTheme());
 	const skill = makeSkillBlock();
 	const compaction = makeCompaction();
-	assert.doesNotMatch(stripAnsi(skill.render(120).join("\\n")), /\\[skill\\]/);
-	assert.doesNotMatch(stripAnsi(compaction.render(120).join("\\n")), /\\[compaction\\]/);
+	assert.doesNotMatch(stripAnsi(skill.render(120).join("\n")), /\[skill\]/);
+	assert.doesNotMatch(stripAnsi(compaction.render(120).join("\n")), /\[compaction\]/);
 	dispose();
 	skill.invalidate();
 	compaction.invalidate();
-	assert.match(stripAnsi(skill.render(120).join("\\n")), /\\[skill\\]/);
-	assert.match(stripAnsi(compaction.render(120).join("\\n")), /\\[compaction\\]/);
+	assert.match(stripAnsi(skill.render(120).join("\n")), /\[skill\]/);
+	assert.match(stripAnsi(compaction.render(120).join("\n")), /\[compaction\]/);
 });
 
 test("message-display: refreshMessageDisplays 遍历并刷新已挂载组件", () => {
