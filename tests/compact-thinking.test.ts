@@ -792,8 +792,8 @@ test("thinking preview expands the full body and keeps that state across updateC
 			"expanded body shows more than the preview window",
 		);
 		assert.ok(
-			bgSlots.includes("toolSuccessBg"),
-			"expanded thinking card uses the success background",
+			bgSlots.includes("toolPendingBg"),
+			"expanded thinking card uses the neutral card background",
 		);
 
 		component.updateContent(msg);

@@ -353,8 +353,9 @@ type ExpandedGroupCache = {
 	hover: boolean;
 	theme: unknown;
 	fullscreen: boolean;
-	/** 背景槽位参与命中判断：改配置后已展开的分组不能继续用旧底色。 */
 	bgSlot: string;
+	/** 进行中和成功共用中性底色，状态仍须独立参与缓存判断。 */
+	statuses: ToolStatus[];
 	paints: readonly unknown[];
 	lines: string[];
 };
@@ -493,7 +494,8 @@ export class ToolGroupComponent extends Container {
 		const theme = this.patch.theme;
 		const fg = (color: string, text: string) => theme?.fg?.(color, text) ?? text;
 		const counts = { pending: 0, success: 0, error: 0 };
-		for (const tool of this.children) counts[status(tool)]++;
+		const statuses = this.children.map(status);
+		for (const value of statuses) counts[value]++;
 		const countText = groupCountText(counts, fg);
 		const names = new Set(this.children.map(toolName));
 		const label = names.size === 1 ? toolTitle(this.children[0]) : "Multiple Tools";
@@ -529,6 +531,7 @@ export class ToolGroupComponent extends Container {
 				expandedHit.fullscreen === isToolTuiFullscreen() &&
 				expandedHit.bgSlot === aggregateToolCardBgSlot(this.children) &&
 				expandedHit.paints.length === childPaints.length &&
+				expandedHit.statuses.every((value, index) => value === statuses[index]) &&
 				expandedHit.paints.every((paint, index) => paint === childPaints[index])
 			) {
 				return expandedHit.lines;
@@ -537,7 +540,7 @@ export class ToolGroupComponent extends Container {
 		const expandedLines: string[] = [];
 		for (let index = 0; index < total; index++) {
 			const tool = this.children[index];
-			const toolStatus = status(tool);
+			const toolStatus = statuses[index];
 			const color = toolStatus === "pending" ? "dim" : toolStatus;
 			const branch = index === total - 1 ? "└" : "├";
 			const continuation = index === total - 1 ? "  " : "│ ";
@@ -564,7 +567,7 @@ export class ToolGroupComponent extends Container {
 			}
 		}
 		if (this._expanded) {
-			// 有一个失败整卡用失败底色；没有失败但还有进行中用进行中底色。
+			// 有一个失败整卡用失败底色，其余状态保持中性底色。
 			const backgroundSlot = aggregateToolCardBgSlot(this.children);
 			for (const line of expandedLines) {
 				lines.push(paddedBackgroundRow(theme, backgroundSlot, line, width));
@@ -576,6 +579,7 @@ export class ToolGroupComponent extends Container {
 				theme: this.patch.theme,
 				fullscreen: isToolTuiFullscreen(),
 				bgSlot: backgroundSlot,
+				statuses,
 				paints: childPaints ?? [],
 				lines,
 			};

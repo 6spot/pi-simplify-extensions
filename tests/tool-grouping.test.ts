@@ -226,12 +226,17 @@ test("expanded group rows follow the worst tool status", () => {
 		);
 
 		read.updateResult({ content: [{ type: "text", text: "ok" }], isError: false });
+		const partiallySettled = group.render(80);
+		assert.notStrictEqual(partiallySettled, running, "child status changes invalidate cached rows");
+		assert.match(partiallySettled[1], /1 running · 1 done/);
 		bash.updateResult({ content: [{ type: "text", text: "done" }], isError: false });
 		const settled = group.render(80);
-		assert.notStrictEqual(settled, running, "status change drops the stale expanded rows");
+		assert.notStrictEqual(settled, partiallySettled, "status change drops the stale expanded rows");
+		assert.match(settled[1], /2 done/);
+		assert.doesNotMatch(settled[1], /running/);
 		assert.ok(
-			settled.some((line: string) => line.includes(bgAnsiOf("toolSuccessBg"))),
-			"all settled tools paint the success background",
+			settled.some((line: string) => line.includes(bgAnsiOf("toolPendingBg"))),
+			"settled tools keep the neutral card background",
 		);
 		assert.strictEqual(
 			group.render(80),
@@ -246,8 +251,8 @@ test("expanded group rows follow the worst tool status", () => {
 			"one failed tool paints the error background",
 		);
 		assert.ok(
-			failed.every((line: string) => !line.includes(bgAnsiOf("toolSuccessBg"))),
-			"the success background leaves no row behind",
+			failed.every((line: string) => !line.includes(bgAnsiOf("toolPendingBg"))),
+			"the error background replaces every neutral row",
 		);
 	} finally {
 		hooks.shutdown();

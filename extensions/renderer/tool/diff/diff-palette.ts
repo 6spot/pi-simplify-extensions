@@ -31,18 +31,10 @@ export interface DiffPalette {
 	removeEmphasisBgAnsi: string;
 }
 
-const ADD_ROW_BACKGROUND_MIX_RATIO = 0.04;
-const REMOVE_ROW_BACKGROUND_MIX_RATIO = 0.12;
-const ADD_INLINE_EMPHASIS_MIX_RATIO = 0.26;
-const REMOVE_INLINE_EMPHASIS_MIX_RATIO = 0.5;
-const ADDITION_TINT_TARGET: RgbColor = { r: 84, g: 190, b: 118 };
-const DELETION_TINT_TARGET: RgbColor = { r: 232, g: 95, b: 122 };
-// GitHub dark 删除行底 ~#67060c：混向深酒红目标，压掉主题基底的粉/灰感。
-const DELETION_ROW_TARGET: RgbColor = { r: 103, g: 6, b: 12 };
-const DELETION_EMPHASIS_TARGET: RgbColor = { r: 160, g: 17, b: 23 };
-// 行底/强调底混完再向自身亮度去饱和，留灰感，避免纯色底过艳。
-const ROW_DESATURATE_RATIO = 0.3;
-const EMPHASIS_DESATURATE_RATIO = 0.2;
+const FALLBACK_ROW_MIX_RATIO = 0.08;
+const INLINE_ADDITION_MIX_RATIO = 0.08;
+// 浅色删除底色上的辅助文字接近对比度下限，行内混色保持更轻。
+const INLINE_REMOVAL_MIX_RATIO = 0.05;
 export const ANSI_BG_RESET = "\x1b[49m";
 
 export function emphasis(theme: DiffTheme, text: string): string {
@@ -208,11 +200,6 @@ function rgbToBgAnsi(color: RgbColor): string {
 	return `\x1b[48;2;${r};${g};${b}m`;
 }
 
-function desaturateRgb(color: RgbColor, ratio: number): RgbColor {
-	const luma = (color.r * 299 + color.g * 587 + color.b * 114) / 1000;
-	return mixRgb(color, { r: luma, g: luma, b: luma }, ratio);
-}
-
 function mixRgb(base: RgbColor, tint: RgbColor, ratio: number): RgbColor {
 	const clamped = Math.max(0, Math.min(1, ratio));
 	return {
@@ -276,9 +263,6 @@ export function readThemeAnsi(
 export function resolveDiffPalette(theme: DiffTheme): DiffPalette {
 	const fallbackBg = parseAnsiColorCode(readThemeAnsi(theme, "bg", "toolPendingBg")) ??
 		parseAnsiColorCode(readThemeAnsi(theme, "bg", "userMessageBg")) ?? { r: 32, g: 35, b: 42 };
-	// 删除行用 toolErrorBg 做基底（主题里是 diffDelBg 暗红）；不定义时退回通用基底混 tint。
-	const addBaseBg = parseAnsiColorCode(readThemeAnsi(theme, "bg", "toolSuccessBg")) ?? fallbackBg;
-	const removeBaseBg = parseAnsiColorCode(readThemeAnsi(theme, "bg", "toolErrorBg")) ?? addBaseBg;
 	const addFg = parseAnsiColorCode(readThemeAnsi(theme, "fg", "toolDiffAdded")) ?? {
 		r: 88,
 		g: 173,
@@ -289,31 +273,14 @@ export function resolveDiffPalette(theme: DiffTheme): DiffPalette {
 		g: 98,
 		b: 98,
 	};
-	const addTint = mixRgb(addFg, ADDITION_TINT_TARGET, 0.35);
-	const removeTint = mixRgb(removeFg, DELETION_TINT_TARGET, 0.65);
-
-	const addRowBg = desaturateRgb(
-		mixRgb(addBaseBg, addTint, ADD_ROW_BACKGROUND_MIX_RATIO),
-		ROW_DESATURATE_RATIO,
-	);
-	const addEmphasisBg = desaturateRgb(
-		mixRgb(addBaseBg, addTint, ADD_INLINE_EMPHASIS_MIX_RATIO),
-		EMPHASIS_DESATURATE_RATIO,
-	);
-	// 暗色基底下向 GitHub 深酒红（~#67060c）加权，压掉主题基底的粉/灰感；
-	// 浅色基底保持原 tint 口径，免得行底深得盖过文字。
-	const removeBaseLuminance =
-		(removeBaseBg.r * 299 + removeBaseBg.g * 587 + removeBaseBg.b * 114) / 1000;
-	const removeRowTarget = removeBaseLuminance < 128 ? DELETION_ROW_TARGET : removeTint;
-	const removeEmphasisTarget = removeBaseLuminance < 128 ? DELETION_EMPHASIS_TARGET : removeTint;
-	const removeRowBg = desaturateRgb(
-		mixRgb(removeBaseBg, removeRowTarget, REMOVE_ROW_BACKGROUND_MIX_RATIO),
-		ROW_DESATURATE_RATIO,
-	);
-	const removeEmphasisBg = desaturateRgb(
-		mixRgb(removeBaseBg, removeEmphasisTarget, REMOVE_INLINE_EMPHASIS_MIX_RATIO),
-		EMPHASIS_DESATURATE_RATIO,
-	);
+	// 行底直接遵循主题；缺少对应槽位时，才从通用背景和语义前景混出底色。
+	const addRowBg = parseAnsiColorCode(readThemeAnsi(theme, "bg", "toolSuccessBg")) ??
+		mixRgb(fallbackBg, addFg, FALLBACK_ROW_MIX_RATIO);
+	const removeRowBg = parseAnsiColorCode(readThemeAnsi(theme, "bg", "toolErrorBg")) ??
+		mixRgb(fallbackBg, removeFg, FALLBACK_ROW_MIX_RATIO);
+	// 行内强调延续同一语义色，避免额外的固定红绿覆盖深浅主题。
+	const addEmphasisBg = mixRgb(addRowBg, addFg, INLINE_ADDITION_MIX_RATIO);
+	const removeEmphasisBg = mixRgb(removeRowBg, removeFg, INLINE_REMOVAL_MIX_RATIO);
 
 	return {
 		addRowBgAnsi: rgbToBgAnsi(addRowBg),

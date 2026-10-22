@@ -23,7 +23,7 @@ pi install git:github.com/6spot/pi-simplify-extensions
 
 本地开发可在项目目录运行 `pi -e .`。检查代码可运行 `npm ci`、`npm run typecheck`、`npm test`。
 
-在 Pi 的 `/settings` 中切换主题 `simplify-dark` 或 `simplify-light`。
+在 Pi 的 `/settings` 中切换主题 `simplify-dark` 或 `simplify-light`。两者采用石墨蓝配色：中性灰区分工具卡和输入框，柔和蓝色用于交互，成功由绿色标记表达；Diff 保留低饱和的增删底色和行内强调。
 
 ## 配置
 

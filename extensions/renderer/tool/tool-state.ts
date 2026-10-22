@@ -94,10 +94,10 @@ export function pendingIcon(_name: string): string {
 
 type ToolVisualState = "pending" | "success" | "error";
 
-/** 展开卡底色槽位：与工具状态一一对应，不再读配置。 */
+/** 卡片表面保持中性，成功由状态标记表达；彩色背景留给 Diff 和失败。 */
 export const TOOL_CARD_BG_SLOT: Record<ToolVisualState, ThemeBg> = {
 	pending: "toolPendingBg",
-	success: "toolSuccessBg",
+	success: "toolPendingBg",
 	error: "toolErrorBg",
 };
 
@@ -124,18 +124,9 @@ export function aggregateToolCardStatus(tools: readonly any[]): ToolVisualState 
 	return pending ? "pending" : "success";
 }
 
-/**
- * 单张工具卡的底色。
- * edit/write 的新增行底色由 toolSuccessBg 混出，成功卡不能再用同一块绿，否则两层叠在一起。
- * 成功的 edit/write 改用中性的 toolPendingBg；失败卡仍用 toolErrorBg。
- */
+/** 单张工具卡的底色，与分组卡片使用相同的状态映射。 */
 export function toolCardBgSlot(tool: any): ThemeBg {
-	const status = toolCardStatus(tool);
-	const name = String(tool?.toolName ?? "");
-	if ((name === "edit" || name === "write") && status !== "error") {
-		return TOOL_CARD_BG_SLOT.pending;
-	}
-	return TOOL_CARD_BG_SLOT[status];
+	return TOOL_CARD_BG_SLOT[toolCardStatus(tool)];
 }
 
 export function aggregateToolCardBgSlot(tools: readonly any[]): string {

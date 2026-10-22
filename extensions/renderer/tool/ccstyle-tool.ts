@@ -47,10 +47,6 @@ import {
 } from "./tool-state.ts";
 import { showMoreHintText } from "./names.ts";
 
-/** 成功勾：亮绿 truecolor（与 message-display 一致）。 */
-const BRIGHT_GREEN = "[38;2;80;220;100m";
-const ANSI_FG_RESET = "[39m";
-
 /** `(+A -D)`：plain 用于占宽，styled 用于上屏。default 写标题与 compact edit/write 标题共用。 */
 export function styleChangeCounts(
 	fg: (color: string, text: string) => string,
@@ -206,10 +202,7 @@ export function createCcstyleTool(
 				isPending && (Boolean(context?.executionStarted) || isLiveToolCall(context?.toolCallId));
 			if (animating) scheduleAnimation(context, { light: true });
 			const settledRawIcon = isPending ? "" : settledIcon(toolName, visualState);
-			const settledIconStyled =
-				visualState === "success"
-					? `${BRIGHT_GREEN}${settledRawIcon}${ANSI_FG_RESET}`
-					: theme.fg(toolIconColor(context), settledRawIcon);
+			const settledIconStyled = theme.fg(toolIconColor(context), settledRawIcon);
 			// 逐帧 spinner：帧在 render() 内取，动画定时器只需 requestRender，
 			// 不再每次 tick 走 updateDisplay 把整张卡重建一遍。
 			const pendingIconStyled = () => theme.fg(toolIconColor(context), pendingIcon(toolName));

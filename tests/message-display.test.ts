@@ -75,7 +75,7 @@ test("message-display: ccstyle on 时三个组件渲染为工具调用风格", (
 	const skillExpanded = stripAnsi(skill.render(120).join("\n"));
 	assert.match(skillExpanded, /✓ Skill ponytail/);
 	assert.match(skillExpanded, /lazy/);
-	assert.deepEqual([...new Set(backgroundSlots)], ["toolSuccessBg"]);
+	assert.deepEqual([...new Set(backgroundSlots)], ["toolPendingBg"]);
 	assert.ok(skill.render(120).length > 3, "展开卡应有上下内边距");
 	skill.setExpanded(false);
 	assert.equal(skill.render(120).length, 1, "收起后恢复单行");
