@@ -84,7 +84,7 @@ export function resetStickyPromptState(): void {
 
 /** 功能开关：仅 fullscreen 生效，off 模式还原原生渲染。 */
 function stickyPromptActive(): boolean {
-	return config.stickyUserMessage && config.mode !== "off";
+	return config.stickyUserMessage;
 }
 
 function setStickyHovered(hovered: boolean): boolean {

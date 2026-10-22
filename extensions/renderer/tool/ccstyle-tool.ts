@@ -3,7 +3,7 @@
  * default 用它接管 ToolExecutionComponent；compact 展开面板复用同一份 render。
  */
 import { Text, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import { config, getToolDisplayConfig, type CompactStyleMode } from "../../config/config.ts";
+import { config, getToolDisplayConfig } from "../../config/config.ts";
 import { isToolCallHovered } from "../mouse/hover.ts";
 import {
 	ASK_USER_QUESTION_TOOL_NAME,
@@ -63,23 +63,9 @@ export function styleChangeCounts(
 	};
 }
 
-/** rich diff 的两个入口（本处与 compact 的 paintCompactEditWrite）都靠 renderRichToolResult
- * 返回 undefined 让位，这里只判断模式与工具名，避免多一个可能与让位不一致的 gate。 */
-export function shouldRenderRichDiff(
-	mode: CompactStyleMode,
-	toolName: string,
-	isError: boolean,
-): boolean {
-	return mode === "on" && !isError && (toolName === "edit" || toolName === "write");
-}
-
-function renderDefault(tool: any, slot: "renderCall" | "renderResult", args: any[], fallback = "") {
-	try {
-		if (typeof tool?.[slot] === "function") return tool[slot](...args);
-	} catch {
-		// Fall through to raw fallback.
-	}
-	return new Text(fallback, 0, 0);
+/** Rich Diff is always enabled for successful edit/write calls. */
+export function shouldRenderRichDiff(toolName: string, isError: boolean): boolean {
+	return !isError && (toolName === "edit" || toolName === "write");
 }
 
 type ParsedTask = { id: string; status: string; subject: string };
@@ -200,10 +186,6 @@ export function createCcstyleTool(
 		...originalTool,
 		renderShell: "self",
 		renderCall(args: any, theme: any, context: any) {
-			if (config.mode === "off") {
-				return renderDefault(originalTool, "renderCall", [args, theme, context], String(toolName));
-			}
-
 			// shell 的耗时从执行开始算；restore 出来的行没有 executionStarted，不参与。
 			if (
 				SHELL_TOOL_NAMES.has(toolName) &&
@@ -304,15 +286,6 @@ export function createCcstyleTool(
 			};
 		},
 		renderResult(result: any, options: any, theme: any, context: any) {
-			if (config.mode === "off") {
-				return renderDefault(
-					originalTool,
-					"renderResult",
-					[result, options, theme, context],
-					textFromResult(result),
-				);
-			}
-
 			const expanded = isToolExpanded(options, context);
 			const isError = Boolean(options?.isError || context?.isError);
 			// codemode：折叠态自己画子调用树，展开态给全部子调用与去掉脚本头的输出
@@ -400,7 +373,7 @@ export function createCcstyleTool(
 
 			setToolVisualState(context, isError ? "error" : "success");
 			const toolCallId = context?.toolCallId;
-			if (shouldRenderRichDiff(config.mode, toolName, Boolean(isError))) {
+			if (shouldRenderRichDiff(toolName, Boolean(isError))) {
 				// getter 保证 Diff indicator / wrap / limits 下次绘制即更新
 				const richResult = renderRichToolResult(
 					toolName,

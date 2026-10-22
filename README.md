@@ -8,7 +8,7 @@
 - Compact Thinking 思考预览（不再提供整回合 Compact Mode）
 - Codex 风格输入框：灰色背景、无上下横线、保留原生编辑能力
 - 独立在输入框上方的 Working 状态，显示当前工具操作、Token 数量和耗时
-- 简洁 Footer：模型 / 上下文 / 费用；目录 / Git
+- 单行无图标 Footer：模型、Context、费用、目录、Git；终端窄时自动精简
 - Fullscreen 鼠标操作、回到底部、顶部固定用户消息
 - `/context` 上下文查看
 - 官方 Pi 启动欢迎页，不替换 Logo
@@ -27,18 +27,14 @@ pi install git:github.com/6spot/pi-simplify-extensions
 
 ## 配置
 
-个人固定风格，不再提供 `/ccstyle` 设置面板，也不读取旧的 `~/.pi/agent/pi-cc-extensions.json`。
+固定工具渲染模式为 `on`，Footer 固定为单行无图标。不再提供 `/ccstyle` 设置面板，也不读取旧的 `~/.pi/agent/pi-cc-extensions.json`。
 
 仅修改仓库根目录的 `simplify.json`：
 
 ```json
 {
   "diff": { "view": "auto", "collapsedEditLines": 12 },
-  "thinking": { "previewLines": 3 },
-  "footer": {
-    "line1": ["model", "context", "cost"],
-    "line2": ["cwd", "git"]
-  }
+  "thinking": { "previewLines": 3 }
 }
 ```
 

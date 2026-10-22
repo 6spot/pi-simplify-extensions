@@ -112,7 +112,7 @@ let scrollButtonSyncScheduled = false;
 // 交互开关只取决于配置模式：原实现按 isLazyProxyTui(toolMouseTui) 分两分支，
 // 两分支恒真（0.84+ 惰性 Proxy 下判定不再影响开关），折叠为单条件。
 export function toolMouseInteractionActive(): boolean {
-	return config.mode !== "off";
+	return true;
 }
 
 /** dock 模式才用扩展的独占行；native 或 ccstyle off 时交还 Pi 原生浮层。 */

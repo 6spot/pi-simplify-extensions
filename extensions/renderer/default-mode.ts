@@ -1,12 +1,12 @@
 /**
- * default mode（config.mode === "on"）：Claude Code 风格工具卡渲染。
+ * 固定 on 模式：Claude Code 风格工具卡渲染。
  *
  * 经 ToolExecutionComponent 原型补丁接管 call/result。
  * 卡片怎么画在 tool/ccstyle-tool.ts，本文件只负责安装与所有权。
  * 生命周期对齐 compact-mode：installDefaultMode → hooks.shutdown。
  */
 import { ToolExecutionComponent } from "@earendil-works/pi-coding-agent";
-import { config, type CompactStyleMode } from "../config/config.ts";
+import { config } from "../config/config.ts";
 import {
 	COMPONENT_TOOL_RENDER_MODE,
 	GLOBAL_TOOL_RENDER_PATCH,
@@ -67,7 +67,6 @@ type GlobalToolRenderPatch = {
 	version: 2;
 	prototype: any;
 	active: boolean;
-	mode: () => CompactStyleMode;
 	wrap: (tool: any, toolName: string) => any;
 	byDefinition: WeakMap<object, Map<string, any>>;
 	byName: Map<string, any>;
@@ -116,7 +115,6 @@ function shouldGloballyStyleTool(component: any, patch: GlobalToolRenderPatch): 
 	const toolName = String(component.toolName || definition?.name || "");
 	// compact 也复用同一套 ccstyle call/result，避免折叠态工具卡回落到 Pi 原生样式。
 	const useCcstyle =
-		patch.mode() !== "off" &&
 		!DEDICATED_RENDERER_TOOLS.has(toolName) &&
 		!preservesOriginalRenderer(extensionDefinition, toolName, builtInDefinition);
 	component[COMPONENT_TOOL_RENDER_MODE] = useCcstyle;
@@ -242,7 +240,6 @@ function installGlobalToolRendering(
 		version: 2,
 		prototype,
 		active: true,
-		mode: () => config.mode,
 		wrap: (tool: any, toolName: string) =>
 			createCcstyleTool(tool, writeExecutionMetadata, toolName),
 		byDefinition: new WeakMap(),
@@ -298,7 +295,7 @@ function installGlobalToolRendering(
 	prototype.getRenderContext = patch.getRenderContext;
 	// fullscreen 滚动/选区每帧整树 render；内容未变时复用上一帧行，避免重做 diff/Box。
 	patch.renderPaint = function (this: any, width: number): string[] {
-		if (!patch.active || patch.mode() === "off") {
+		if (!patch.active) {
 			return originalRender.call(this, width);
 		}
 		const cache = patch.paintCache;
@@ -387,7 +384,7 @@ export function installToolExpandedBackground(): () => void {
 		prototype,
 		installed: function (this: any) {
 			original.call(this);
-			if (!patch.active || config.mode === "off" || !this.expanded) return;
+			if (!patch.active || !this.expanded) return;
 			const theme = getMessageDisplayTheme();
 			if (!theme?.bg) return;
 			const box = this.contentBox;

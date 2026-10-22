@@ -5,16 +5,5 @@
   },
   "thinking": {
     "previewLines": 3
-  },
-  "footer": {
-    "line1": [
-      "model",
-      "context",
-      "cost"
-    ],
-    "line2": [
-      "cwd",
-      "git"
-    ]
   }
 }

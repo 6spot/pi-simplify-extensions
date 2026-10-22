@@ -5,7 +5,6 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Markdown, Spacer, Text } from "@earendil-works/pi-tui";
 import { MESSAGE_DISPLAY_PATCH, patchRegistry } from "../../utils/patch-keys.ts";
-import { config } from "../../config/config.ts";
 import { TOOL_CARD_BG_SLOT } from "./tool-state.ts";
 import { showMoreHintText } from "./names.ts";
 import { walkComponentTree } from "../../utils/component-tree.ts";
@@ -117,7 +116,7 @@ export function installMessageDisplayRendering(): () => void {
 		const prototype = ComponentClass.prototype;
 		const original = prototype.updateDisplay;
 		const installed = function (this: any) {
-			if (patch.active && config.mode !== "off") {
+			if (patch.active) {
 				try {
 					renderCcstyle(this, kind);
 					return;
