@@ -1,6 +1,5 @@
-import { ToolExecutionComponent, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { isAbsolute, resolve } from "node:path";
-import { config } from "../config/config.ts";
 import { installToolGrouping, type ToolGroupingHooks } from "./tool/grouping.ts";
 import { installDefaultMode, installToolExpandedBackground, type DefaultModeHooks } from "./default-mode.ts";
 import { installMainScreenDoRenderPatch } from "../utils/fullscreen-detect.ts";

@@ -11,7 +11,7 @@ import {
 	installCompactThinking,
 	ThinkingPreviewBlock,
 } from "../extensions/feature/compact-thinking.ts";
-import { animateCompactThinkingText } from "../extensions/renderer/compact-mode.ts";
+import { animateCompactThinkingText } from "../extensions/renderer/thinking-style.ts";
 
 const config = {
 	useSummaryTitlesAsThinkingTitle: false,

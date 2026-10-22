@@ -82,29 +82,6 @@ export function isScrollbarColumnAt(layout: any, x: number): boolean {
 	return hit;
 }
 
-/** compact 展开卡用 childAtRow 映射 thinking；其余按 render 行数下钻。 */
-function nestedChildAtRow(node: any, localRow: number, width: number): any {
-	if (typeof node?.childAtRow === "function") {
-		return node.childAtRow(localRow, width);
-	}
-	if (!Array.isArray(node?.children)) return null;
-	let offset = 0;
-	for (const child of node.children) {
-		let count = 0;
-		try {
-			const rendered = child.render?.(width);
-			if (Array.isArray(rendered)) count = rendered.length;
-		} catch {
-			count = 0;
-		}
-		if (localRow < offset + count) {
-			return nestedChildAtRow(child, localRow - offset, width);
-		}
-		offset += count;
-	}
-	return null;
-}
-
 /**
  * 布局 leaf box 的组件通常是容器（documentContainer/dock 容器等），工具卡与
  * widget 在其 children 内。按局部行遍历组件树，定位实际命中的子组件。

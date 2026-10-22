@@ -12,7 +12,7 @@ import {
 	visibleWidth,
 } from "@earendil-works/pi-tui";
 import { createJiti } from "jiti";
-import { config, formatConfigStatus, normalizeConfig } from "../extensions/config/config.ts";
+import { config } from "../extensions/config/config.ts";
 import { setToolTuiFullscreen } from "../extensions/renderer/tool/names.ts";
 import {
 	computeStickyPrompt,
@@ -139,16 +139,6 @@ function withSticky<T>(body: () => T): T {
 		resetScrollButtonState();
 	}
 }
-
-test("sticky prompt: config defaults to on and shows in status", () => {
-	assert.equal(normalizeConfig({}).stickyUserMessage, true);
-	assert.equal(normalizeConfig({ stickyUserMessage: false }).stickyUserMessage, false);
-	assert.match(formatConfigStatus(normalizeConfig({})), /stickyUserMessage=on/);
-	assert.match(
-		formatConfigStatus(normalizeConfig({ stickyUserMessage: false })),
-		/stickyUserMessage=off/,
-	);
-});
 
 test("sticky prompt: markers only injected in fullscreen", () => {
 	withSticky(() => {

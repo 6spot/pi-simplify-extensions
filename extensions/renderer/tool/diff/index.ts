@@ -1,4 +1,3 @@
-import { truncateToWidth } from "@earendil-works/pi-tui";
 import {
 	renderEditDiffResult,
 	renderWriteDiffResult,
@@ -15,21 +14,6 @@ function resultText(result: any): string {
 		.join("\n");
 }
 
-function unavailableComponent(reason: string, theme: any) {
-	return {
-		render(width: number): string[] {
-			return [
-				truncateToWidth(
-					theme.fg("warning", `↳ diff unavailable: ${reason}`),
-					Math.max(0, width),
-					"",
-				),
-			];
-		},
-		invalidate() {},
-	};
-}
-
 export function renderRichToolResult(
 	toolName: string,
 	result: any,
@@ -37,7 +21,7 @@ export function renderRichToolResult(
 	theme: any,
 	context: any,
 	writeMetadata: WriteExecutionMetadataStore,
-	/** Plain snapshot or live getter — getter lets /ccstyle panel changes repaint existing diffs. */
+	/** Configured display options. */
 	displayConfig: DisplayConfigInput = DEFAULT_TOOL_DISPLAY_CONFIG,
 ): any | undefined {
 	if (options?.isPartial || options?.isError || context?.isError) return undefined;

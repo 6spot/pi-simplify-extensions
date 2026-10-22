@@ -24,7 +24,7 @@ test("working message appends token count and elapsed time while streaming", asy
 
 	await events.get("turn_start")?.({}, ctx);
 	// No tokens yet and under the timer threshold: keep Pi's default "Working...".
-	assert.equal(messages.at(-1), undefined);
+	assert.equal(messages.at(-1), "Working · Processing");
 
 	const delta = "This is a streaming response body long enough to count some tokens.";
 	await events.get("message_update")?.(
@@ -36,7 +36,7 @@ test("working message appends token count and elapsed time while streaming", asy
 		ctx,
 	);
 	const working = messages.at(-1);
-	assert.match(working ?? "", /^Working\.\.\. \(↓ \d+ tokens · \d+s\)$/);
+	assert.match(working ?? "", /^Working · Generating response · ↓ \d+ tokens · \d+s$/);
 
 	await events.get("turn_end")?.({}, ctx);
 	assert.equal(messages.at(-1), undefined, "turn end restores default without a completion line");
@@ -157,7 +157,7 @@ test("compact 活动回合不改写 working message", async () => {
 
 	await events.get("turn_start")?.({}, ctx);
 	await pushDelta();
-	assert.match(messages.at(-1) ?? "", /^Working\.\.\. \(↓ \d+ tokens/, "保持默认文案");
+	assert.match(messages.at(-1) ?? "", /^Working · Generating response · ↓ \d+ tokens/, "保持默认文案");
 });
 
 // Pi 的 ctx 失效后 getter 会抛错；定时器里逃逸的异常会直接终止 Pi 进程 (#41)。
@@ -193,4 +193,16 @@ test("refresh timer stops quietly once the captured ctx goes stale", async (t) =
 	);
 	await events.get("turn_start")?.({}, ctx);
 	await events.get("session_shutdown")?.({}, ctx);
+});
+
+test("shows the current tool and removes it after execution", async () => {
+	const { events, messages, ctx } = install();
+	await events.get("turn_start")?.({}, ctx);
+	await events.get("tool_execution_start")?.(
+		{ toolCallId: "a", toolName: "read", args: { path: "src/app.ts" } }, ctx,
+	);
+	assert.match(messages.at(-1) ?? "", /Working · Reading src\/app\.ts/);
+	await events.get("tool_execution_end")?.({ toolCallId: "a", toolName: "read" }, ctx);
+	assert.doesNotMatch(messages.at(-1) ?? "", /Reading src\/app\.ts/);
+	await events.get("turn_end")?.({}, ctx);
 });
