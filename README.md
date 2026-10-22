@@ -6,7 +6,7 @@
 
 - Claude Code 风格工具卡、工具分组、点击展开与收起、Rich Diff
 - Compact Thinking 思考预览（不再提供整回合 Compact Mode）
-- Codex 风格输入框：灰色背景、圆角细边框、无前缀符号、保留原生编辑能力
+- Codex 风格输入框：灰色背景、无边框、无前缀符号、保留原生编辑能力
 - 独立在输入框上方的 Working 状态，显示当前工具操作、Token 数量和耗时；工具行用静态标记避免重复转圈
 - 单行无图标 Footer：左侧目录、Git、Context、费用，右侧 Thinking Level、模型；模型固定在最右端，终端窄时先精简项目信息
 - Fullscreen 鼠标操作、回到底部、顶部固定用户消息

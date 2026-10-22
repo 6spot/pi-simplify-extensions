@@ -41,20 +41,21 @@ function promptEditor() {
 
 const plain = (line: string) => stripAnsi(line.replaceAll(CURSOR_MARKER, ""));
 
-test("rounded input frame preserves width, text and native scroll indicators without a prompt symbol", () => {
+test("borderless input preserves width and text without a frame or prompt symbol", () => {
 	const editor = promptEditor();
 	editor.setText("你好 hello 🙂");
 	const lines = editor.render(24).map(plain);
-	assert.equal(lines[0], `╭${"─".repeat(22)}╮`);
-	assert.equal(lines.at(-1), `╰${"─".repeat(22)}╯`);
-	assert.match(lines[1], /^│ 你好 hello 🙂/);
+	assert.equal(lines[0], " ".repeat(24));
+	assert.equal(lines.at(-1), " ".repeat(24));
+	assert.match(lines[1], /^ {2}你好 hello 🙂/);
 	assert.ok(lines.every((line) => visibleWidth(line) === 24));
-	assert.ok(lines.every((line) => !line.includes("❯")));
+	assert.ok(lines.every((line) => !/[╭╮╰╯│─❯]/.test(line)));
 	assert.equal(editor.getText(), "你好 hello 🙂");
 
 	editor.setText(Array.from({ length: 20 }, (_, i) => `line ${i}`).join("\n"));
 	const scrolled = editor.render(24).map(plain);
-	assert.match(scrolled[0], /^╭.*↑.*╮$/);
+	assert.equal(scrolled[0], " ".repeat(24));
+	assert.ok(scrolled.every((line) => !/[╭╮╰╯│─❯]/.test(line)));
 	assert.ok(scrolled.every((line) => visibleWidth(line) === 24));
 });
 
@@ -83,10 +84,10 @@ test("input padding stays consistent for rendering, hardware cursor, mouse click
 	line = editor.render(20)[1];
 	assert.equal(visibleWidth(line.slice(0, line.indexOf(CURSOR_MARKER))), 6);
 	assert.equal(inputTextIndent(), 5);
-	assert.match(plain(line), /^│ {4}a/);
+	assert.match(plain(line), /^ {5}a/);
 });
 
-test("rounded frame and background stop before autocomplete and preserve its mouse geometry", () => {
+test("input background stops before autocomplete and preserves its mouse geometry", () => {
 	const editor = promptEditor();
 	const background = "\x1b[48;2;37;40;45m";
 	editor.setBackgroundPainter((line) => `${background}${line}\x1b[49m`);
@@ -104,7 +105,7 @@ test("rounded frame and background stop before autocomplete and preserve its mou
 	const lines = editor.render(20);
 	assert.equal(lines.length, 4);
 	assert.ok(lines.slice(0, 3).every((line) => line.includes(background)));
-	assert.equal(plain(lines[2]), `╰${"─".repeat(18)}╯`);
+	assert.equal(plain(lines[2]), " ".repeat(20));
 	assert.equal(lines[3], `  completion${" ".repeat(8)}`);
 	assert.ok(!lines[3].includes(background));
 	assert.ok(!lines[3].includes("│"));
@@ -118,14 +119,14 @@ test("rounded frame and background stop before autocomplete and preserve its mou
 	assert.equal(click.width, 16);
 });
 
-test("input frame handles narrow widths and a cursor overflowing into padding", () => {
+test("borderless input handles narrow widths and a cursor overflowing into padding", () => {
 	const editor = promptEditor();
 	editor.setText("abc");
 	assert.deepEqual(editor.render(0), []);
 	for (const width of [3, 4, 5, 6, 7, 8]) {
 		const lines = editor.render(width).map(plain);
 		assert.ok(lines.every((line) => visibleWidth(line) === width), `width ${width}`);
-		assert.equal(lines[0].startsWith("╭"), width >= 5);
+		assert.ok(lines.every((line) => !/[╭╮╰╯│─❯]/.test(line)));
 		assert.equal(editor.getText(), "abc");
 	}
 });
