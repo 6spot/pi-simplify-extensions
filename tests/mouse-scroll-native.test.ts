@@ -240,7 +240,7 @@ test("native mode changes only the real native label and preserves host geometry
 	teardownToolMouseInteraction(frame.owner);
 	assert.equal(
 		frame.renderer.scrollToEndIndicator,
-		originalAfterOff,
+		frame.original,
 		"widget disposal restores only native text",
 	);
 });
