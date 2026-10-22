@@ -19,7 +19,7 @@ test("ahead/behind counts come from the upstream header without fetching", async
 	git("remote", "add", "origin", "https://example.invalid/repo.git");
 	git("config", "branch.feature.remote", "origin");
 	git("config", "branch.feature.merge", "refs/heads/feature");
-	assert.deepEqual(await readGitStats(cwd, "working"), { add: 0, del: 0, status: "⇡1⇣1" });
+	assert.deepEqual(await readGitStats(cwd), { add: 0, del: 0, status: "⇡1⇣1" });
 });
 
 test("conflicted merge surfaces as = alongside counts", async (t) => {
@@ -35,5 +35,5 @@ test("conflicted merge surfaces as = alongside counts", async (t) => {
 	} catch {
 		// 冲突是预期结果；execFileSync 以退出码 1 抛错
 	}
-	assert.equal((await readGitStats(cwd, "working"))?.status, "=!");
+	assert.equal((await readGitStats(cwd))?.status, "=!");
 });

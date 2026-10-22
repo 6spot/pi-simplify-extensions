@@ -3,10 +3,9 @@
  *
  * 经 ToolExecutionComponent 原型补丁接管 call/result。
  * 卡片怎么画在 tool/ccstyle-tool.ts，本文件只负责安装与所有权。
- * 生命周期对齐 compact-mode：installDefaultMode → hooks.shutdown。
+ * 生命周期：installDefaultMode → hooks.shutdown。
  */
 import { ToolExecutionComponent } from "@earendil-works/pi-coding-agent";
-import { config } from "../config/config.ts";
 import {
 	COMPONENT_TOOL_RENDER_MODE,
 	GLOBAL_TOOL_RENDER_PATCH,
@@ -22,22 +21,6 @@ export { shouldRenderRichDiff } from "./tool/ccstyle-tool.ts";
 
 // pi-subagents 等扩展为 Agent 提供专用渲染器，ccstyle 必须保留。
 const DEDICATED_RENDERER_TOOLS = new Set(["Agent"]);
-
-/** 排除名单内且自带 renderer 的工具保留原渲染。 */
-export function preservesOriginalRenderer(
-	extensionDefinition: any,
-	toolName: string,
-	builtInToolDefinition?: any,
-	excludeRenderers: readonly string[] = config.excludeRenderers,
-): boolean {
-	if (!excludeRenderers.includes(toolName)) return false;
-	return [extensionDefinition, builtInToolDefinition].some(
-		(definition) =>
-			definition?.renderShell === "self" ||
-			typeof definition?.renderCall === "function" ||
-			typeof definition?.renderResult === "function",
-	);
-}
 
 export type DefaultModeHooks = {
 	/** 本安装是否仍持有全局工具渲染补丁。 */
@@ -108,15 +91,10 @@ function syncToolShell(component: any, shell: "default" | "self"): void {
 	}
 }
 
-function shouldGloballyStyleTool(component: any, patch: GlobalToolRenderPatch): boolean {
-	const extensionDefinition = component.toolDefinition;
-	const builtInDefinition = component.builtInToolDefinition;
-	const definition = extensionDefinition ?? builtInDefinition;
+function shouldGloballyStyleTool(component: any): boolean {
+	const definition = component.toolDefinition ?? component.builtInToolDefinition;
 	const toolName = String(component.toolName || definition?.name || "");
-	// compact 也复用同一套 ccstyle call/result，避免折叠态工具卡回落到 Pi 原生样式。
-	const useCcstyle =
-		!DEDICATED_RENDERER_TOOLS.has(toolName) &&
-		!preservesOriginalRenderer(extensionDefinition, toolName, builtInDefinition);
+	const useCcstyle = !DEDICATED_RENDERER_TOOLS.has(toolName);
 	component[COMPONENT_TOOL_RENDER_MODE] = useCcstyle;
 	return useCcstyle;
 }
@@ -254,12 +232,12 @@ function installGlobalToolRendering(
 
 	patch.installed = {
 		hasRendererDefinition: function (this: any, ...args: any[]) {
-			if (patch.active && shouldGloballyStyleTool(this, patch)) return true;
+			if (patch.active && shouldGloballyStyleTool(this)) return true;
 			return patch.downstream.hasRendererDefinition.apply(this, args);
 		},
 		getRenderShell: function (this: any, ...args: any[]) {
 			if (!patch.active) return patch.downstream.getRenderShell.apply(this, args);
-			const useCcstyle = shouldGloballyStyleTool(this, patch);
+			const useCcstyle = shouldGloballyStyleTool(this);
 			const shell = useCcstyle
 				? this.expanded
 					? "default"
@@ -269,13 +247,13 @@ function installGlobalToolRendering(
 			return shell;
 		},
 		getCallRenderer: function (this: any, ...args: any[]) {
-			if (patch.active && shouldGloballyStyleTool(this, patch)) {
+			if (patch.active && shouldGloballyStyleTool(this)) {
 				return getGloballyStyledTool(this, patch).renderCall;
 			}
 			return patch.downstream.getCallRenderer.apply(this, args);
 		},
 		getResultRenderer: function (this: any, ...args: any[]) {
-			if (patch.active && shouldGloballyStyleTool(this, patch)) {
+			if (patch.active && shouldGloballyStyleTool(this)) {
 				return getGloballyStyledTool(this, patch).renderResult;
 			}
 			return patch.downstream.getResultRenderer.apply(this, args);
@@ -370,10 +348,7 @@ function deactivateGlobalToolRendering(patch: GlobalToolRenderPatch): void {
 	}
 }
 
-/** 展开面板背景按工具状态取槽位；折叠行保持原生状态色。
- *  compact 下 ask_user_question 等普通工具的展开也走原生 contentBox，
- *  这里按同一套状态覆盖它的底色。
- *  必须在 compact-mode 之后安装，shutdown 时先于 compact-mode 释放。 */
+/** 展开面板背景按工具状态取槽位；折叠行保持原生状态色。 */
 export function installToolExpandedBackground(): () => void {
 	const previous = patchRegistry.get<ToolExpandedBackgroundPatch>(TOOL_EXPANDED_BACKGROUND_PATCH);
 	if (previous) previous.dispose();

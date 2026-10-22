@@ -4,8 +4,6 @@ import type { CompactThinkingConfig } from "../feature/compact-thinking.ts";
 
 export type DiffViewMode = "auto" | "split" | "unified";
 export type DiffIndicatorMode = "bars" | "classic" | "none";
-export type FooterGitStatsMode = "working" | "branch";
-export type ScrollButtonMode = "dock" | "native";
 
 export interface ToolDisplayConfig {
 	diffViewMode: DiffViewMode;
@@ -28,28 +26,22 @@ export const DEFAULT_TOOL_DISPLAY_CONFIG: ToolDisplayConfig = {
 };
 
 export type Config = ToolDisplayConfig & {
-	excludeRenderers: string[];
 	expandedInputMaxLines: number;
 	expandedOutputMaxLines: number;
 	toolLabelClip: number;
 	useSummaryTitlesAsThinkingTitle: boolean;
 	previewLines: number;
 	animationIntervalMs: number;
-	stickyUserMessage: boolean;
-	scrollButtonMode: ScrollButtonMode;
 };
 
 export const DEFAULT_CONFIG: Config = {
 	...DEFAULT_TOOL_DISPLAY_CONFIG,
-	excludeRenderers: [],
 	expandedInputMaxLines: 5,
 	expandedOutputMaxLines: 10,
 	toolLabelClip: 0,
 	useSummaryTitlesAsThinkingTitle: true,
 	previewLines: 3,
 	animationIntervalMs: 90,
-	stickyUserMessage: true,
-	scrollButtonMode: "dock",
 };
 
 type LocalSettings = {

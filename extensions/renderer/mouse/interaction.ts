@@ -41,12 +41,10 @@ import {
 	isScrollbarColumnAt,
 } from "./layout.ts";
 import {
+	disableOfficialScrollToEnd,
 	fullscreenLazyTui,
 	hideScrollButton,
-	dockScrollButtonActive,
 	restoreOfficialScrollToEnd,
-	restoreNativeScrollIndicatorText,
-	syncOfficialScrollToEnd,
 	renderScrollButton,
 	resetScrollButtonState,
 	scheduleScrollButtonSync,
@@ -57,7 +55,6 @@ import {
 	getScrollButtonVisible,
 	getScrollButtonWidget,
 	getToolMouseTui,
-	toolMouseInteractionActive,
 	updateScrollButtonFromInput,
 } from "./scroll.ts";
 import {
@@ -304,7 +301,6 @@ function ensureFullscreenToolMouseMotion(tui: any): void {
 		return;
 	}
 	if (
-		!toolMouseInteractionActive() ||
 		tui.mouseEnabled === false ||
 		tui.altScreenActive === false ||
 		tui[FULLSCREEN_MOTION_ENABLED]
@@ -482,7 +478,7 @@ function keepViewportOnExpand(tui: any): void {
 	if (typeof view?.scrollTo !== "function" || typeof view.scrollTop !== "number") return;
 	view.scrollTo(view.scrollTop, { disableFollow: true });
 	// 已脱离底部跟随：dock 模式亮出回到底部按钮，新输出到来时仍有入口。
-	if (view.isFollowingEnd === false && dockScrollButtonActive()) setScrollButtonVisible(true);
+	if (view.isFollowingEnd === false) setScrollButtonVisible(true);
 }
 
 /**
@@ -612,7 +608,7 @@ function patchFullscreenViewportInput(tui: any): void {
 	if (typeof original !== "function") return;
 	tui[FULLSCREEN_VIEWPORT_PATCH] = true;
 	tui.handleViewportInput = function (this: any, data: string) {
-		if (toolMouseInteractionActive() && tui.mode === "fullscreen") {
+		if (tui.mode === "fullscreen") {
 			// 滚动输入（wheel/pageUp/end 等）后同步回到底部按钮显隐；
 			// 官方 viewport 会消费键盘，扩展监听器无法补偿，必须在这里调度。
 			scheduleScrollButtonSync(tui, data);
@@ -948,7 +944,7 @@ function patchToolMouseMotionAfterRender(tui: any): void {
 				this.previousLines = extracted.lines;
 				placements = extracted.placements;
 			}
-			if (toolMouseInteractionActive()) toolMouseRawWrite?.(TOOL_MOUSE_MOTION_ENABLE);
+			toolMouseRawWrite?.(TOOL_MOUSE_MOTION_ENABLE);
 			return result;
 		} finally {
 			setActiveIoViewFrame(previousFrame);
@@ -971,7 +967,7 @@ function patchToolMouseMotionAfterRender(tui: any): void {
 	toolMouseRenderPatchOriginal = original;
 	toolMouseRenderPatchWrapper = wrapper;
 	toolMouseRenderPatchState = patchState;
-	if (toolMouseInteractionActive()) toolMouseRawWrite?.(TOOL_MOUSE_MOTION_ENABLE);
+	toolMouseRawWrite?.(TOOL_MOUSE_MOTION_ENABLE);
 }
 
 function handleToolMouseInput(data: string): { consume: true } | undefined {
@@ -984,9 +980,6 @@ function handleToolMouseInput(data: string): { consume: true } | undefined {
 		return undefined;
 	}
 	updateScrollButtonFromInput(getToolMouseTui(), data);
-	// Off mode restores native input: wheel keeps scrolling through Pi's normal
-	// dispatcher, while hover/click affordances are entirely inactive.
-	if (!toolMouseInteractionActive()) return undefined;
 	const packets = parseSgrMousePackets(data);
 	if (!packets) {
 		scheduleScrollButtonSync(getToolMouseTui(), data);
@@ -1044,9 +1037,8 @@ export function teardownToolMouseInteraction(
 	} catch {
 		// The terminal may already be closed during shutdown.
 	}
-	// Restore the host callback before widget.dispose() clears its native patch snapshot.
+	// Restore the host callback before disposing the widget.
 	restoreOfficialScrollToEnd(getToolMouseTui());
-	restoreNativeScrollIndicatorText();
 	try {
 		toolMouseUi?.setWidget?.(TOOL_MOUSE_WIDGET_KEY, undefined);
 	} catch {
@@ -1055,7 +1047,6 @@ export function teardownToolMouseInteraction(
 	restoreToolMouseRenderPatch();
 	restoreFullscreenViewportInput(getToolMouseTui());
 	restoreOfficialScrollToEnd(getToolMouseTui());
-	restoreNativeScrollIndicatorText();
 	resetScrollButtonState();
 	setToolMouseTui(null);
 	toolMouseUi = null;
@@ -1071,7 +1062,6 @@ export function resetToolHoverState(): void {
 	setScrollButtonVisible(false);
 	setScrollButtonHovered(false);
 	resetStickyPromptState();
-	restoreNativeScrollIndicatorText();
 	restoreOfficialScrollToEnd(getToolMouseTui());
 	releaseFullscreenToolMouseMotion(getToolMouseTui());
 }
@@ -1155,22 +1145,21 @@ export function installToolMouseInteraction(
 		if (isLazyProxyTui(tui)) {
 			patchFullscreenViewportInput(tui);
 			ensureFullscreenToolMouseMotion(tui);
-			syncOfficialScrollToEnd(tui);
+			disableOfficialScrollToEnd(tui);
 			setScrollButtonWidget({
 				render: (width: number) => {
 					patchFullscreenViewportInput(tui);
 					ensureFullscreenToolMouseMotion(tui);
-					syncOfficialScrollToEnd(tui);
+					disableOfficialScrollToEnd(tui);
 					return renderScrollButton(width, theme);
 				},
 				invalidate() {},
-				dispose: restoreNativeScrollIndicatorText,
 			});
 			return getScrollButtonWidget();
 		}
 		// Wrap doRender to capture the live frame for tool click/hover mapping.
 		patchToolMouseMotionAfterRender(tui);
-		if (toolMouseInteractionActive()) tui?.terminal?.write?.(TOOL_MOUSE_MOTION_ENABLE);
+		tui?.terminal?.write?.(TOOL_MOUSE_MOTION_ENABLE);
 		const widget = {
 			render: (width: number) => renderScrollButton(width, theme),
 			invalidate() {},

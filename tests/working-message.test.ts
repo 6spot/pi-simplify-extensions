@@ -19,6 +19,26 @@ function install() {
 	return { events, messages, ctx };
 }
 
+for (const { toolName, args, activity } of [
+	{ toolName: "read", args: { path: "extensions/index.ts" }, activity: "Reading extensions/index.ts" },
+	{ toolName: "edit", args: { file_path: "foo/file.ts" }, activity: "Editing foo/file.ts" },
+	{ toolName: "write", args: { path: " x01f7\\file.ts " }, activity: "Writing x01f7\\file.ts" },
+	{ toolName: "bash", args: { command: "  printf\t'next'\nexit\x00\x1f\x7f  " }, activity: "Running printf 'next' exit" },
+	{ toolName: "custom\nnext", args: {}, activity: "Running custom next" },
+	{ toolName: "read", args: { path: "x".repeat(80) }, activity: `Reading ${"x".repeat(72)}` },
+]) {
+	test(`working activity preserves text and cleans controls: ${JSON.stringify(toolName)}`, async () => {
+		const { events, messages, ctx } = install();
+		await events.get("turn_start")?.({}, ctx);
+		try {
+			await events.get("tool_execution_start")?.({ toolCallId: "regression", toolName, args }, ctx);
+			assert.equal(messages.at(-1), `Working · ${activity}`);
+		} finally {
+			await events.get("turn_end")?.({}, ctx);
+		}
+	});
+}
+
 test("working message appends token count and elapsed time while streaming", async () => {
 	const { events, messages, ctx } = install();
 
@@ -144,20 +164,6 @@ test("tool call argument deltas count toward the token total", async () => {
 	);
 	assert.match(messages.at(-1) ?? "", /↓ 4 tokens/);
 	await events.get("turn_end")?.({}, ctx);
-});
-
-// compact 摘要不再改写 working message：无论是否在底部，都走默认文案。
-test("compact 活动回合不改写 working message", async () => {
-	const { events, messages, ctx } = install();
-	const pushDelta = () =>
-		events.get("message_update")?.(
-			{ assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "abcd" } },
-			ctx,
-		);
-
-	await events.get("turn_start")?.({}, ctx);
-	await pushDelta();
-	assert.match(messages.at(-1) ?? "", /^Working · Generating response · ↓ \d+ tokens/, "保持默认文案");
 });
 
 // Pi 的 ctx 失效后 getter 会抛错；定时器里逃逸的异常会直接终止 Pi 进程 (#41)。

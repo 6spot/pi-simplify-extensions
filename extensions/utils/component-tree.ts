@@ -1,8 +1,7 @@
 /**
  * 组件树递归遍历共享实现。
  *
- * 收敛原先散落在 renderer 的 compact-mode / message-display / transcript-refresh /
- * grouping / mouse/packets 的「children + getMountedRoots + seen 防环」同款遍历。
+ * 共享 children + getMountedRoots 遍历，并通过 seen 集合防环。
  *
  * visitor 在每个非数组对象节点上调用一次；返回 `false` 表示不再下钻该节点的
  * children 与 mounted roots（对应各处原有的提前 return 语义）。

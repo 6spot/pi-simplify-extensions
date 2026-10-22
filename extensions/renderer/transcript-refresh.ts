@@ -1,7 +1,6 @@
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { AssistantMessageComponent, ToolExecutionComponent } from "@earendil-works/pi-coding-agent";
 import { walkComponentTree } from "../utils/component-tree.ts";
-import { COMPACT_MODE_PATCH_KEY, patchRegistry } from "../utils/patch-keys.ts";
 
 // pi-coding-agent 类型声明中 AssistantMessageComponent 仅能以 value 形式使用，
 // updateContent/lastMessage 用结构化类型访问。
@@ -39,30 +38,8 @@ export function refreshTranscriptComponent(value: unknown): boolean {
  * 遍历 value.children 与 value.getMountedRoots?.()（seen 集合防环），
  * 单个组件失败用 try/catch 隔离，不影响其余组件。
  */
-
-/**
- * 补丁链序不变量：compact 模式下 compact-mode 必须位于 compact-thinking
- * 外层（round 摘要才能聚合工具统计）。resume/reload 后若无新消息，
- * message_update 触发的重新认领不会执行，这里在任何重绘前先断言一次。
- * 断言幂等：链序已正确时无操作；mode=on 时也安全（外层走 pass-through）。
- */
-function assertCompactModeOutermost(): void {
-	try {
-		const patch = patchRegistry.get<{ assertAssistantOwnership?: () => void }>(
-			COMPACT_MODE_PATCH_KEY,
-		);
-		if (patch && typeof patch.assertAssistantOwnership === "function") {
-			patch.assertAssistantOwnership();
-		}
-	} catch {
-		// 无 compact-mode 补丁或断言失败时跳过，扫描仍会执行。
-	}
-}
-
 export function refreshMountedTranscript(tui?: unknown): void {
 	if (!tui || typeof (tui as any).getMountedRoots !== "function") return;
-	// 先修正链序再重绘：扫描触发 updateContent 时 compact-mode 已在外层。
-	assertCompactModeOutermost();
 	walkComponentTree(tui, (value: any) => {
 		try {
 			refreshTranscriptComponent(value);

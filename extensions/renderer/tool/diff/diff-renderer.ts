@@ -14,7 +14,7 @@
  *   - diff-write-render.ts : write diff result rendering + stats
  *
  * This file re-exports the stable public symbols so external importers
- * (diff/index.ts, compact-mode.ts, tests) keep working unchanged.
+ * (diff/index.ts and tests) share the same entry point.
  */
 export { shouldHighlightCodeBlock } from "./diff-highlight.ts";
 export type { DisplayConfigInput } from "./diff-component.ts";

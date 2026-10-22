@@ -7,7 +7,6 @@ import {
 	setKeybindings,
 	TUI_KEYBINDINGS,
 } from "@earendil-works/pi-tui";
-import { config } from "../extensions/config/config.ts";
 import {
 	disableOfficialScrollToEnd,
 	getScrollButtonNewCount,
@@ -16,10 +15,8 @@ import {
 	renderScrollButton,
 	resetScrollButtonState,
 	restoreOfficialScrollToEnd,
-	restoreNativeScrollIndicatorText,
 	scheduleScrollButtonSync,
 	setToolMouseTui,
-	syncOfficialScrollToEnd,
 } from "../extensions/renderer/mouse/scroll.ts";
 
 /** 伪造官方 fullscreen 惰性 Proxy TUI：requestRender 每次 get 返回新函数。 */
@@ -53,22 +50,11 @@ const { keyDisplayText } = await import(
 	).href
 );
 
-test("native text: absent native callback stays absent without a fallback button", () => {
-	const previous = { ...config };
+test("scroll button: absent host callback stays absent", () => {
 	const { tui } = lazyFullscreenTui();
-	try {
-		config.scrollButtonMode = "native";
-		setToolMouseTui(tui);
-		syncOfficialScrollToEnd(tui);
-		noteNewTranscriptItem();
-		assert.equal(tui.scrollToEndIndicator, undefined);
-		assert.deepEqual(renderScrollButton(80, fakeTheme()), []);
-	} finally {
-		restoreNativeScrollIndicatorText();
-		resetScrollButtonState();
-		setToolMouseTui(null);
-		Object.assign(config, previous);
-	}
+	disableOfficialScrollToEnd(tui);
+	restoreOfficialScrollToEnd(tui);
+	assert.equal(tui.scrollToEndIndicator, undefined);
 });
 
 // 滚动按钮状态机：调度后立即 teardown（/reload 中途）不得残留渲染或状态，
@@ -121,41 +107,20 @@ test("scroll button: disable official overlay keeps dock button", async () => {
 	setToolMouseTui(null);
 });
 
-// /ccstyle off：还回官方 overlay，不画本仓库 dock 按钮。
-test("scroll button: native mode seeds dock text into Pi overlay and omits dock row", async () => {
-	const previousScrollButtonMode = config.scrollButtonMode;
-	const { tui, count } = lazyFullscreenTui();
+test("scroll button: teardown restores the host overlay callback idempotently", () => {
+	const { tui } = lazyFullscreenTui();
 	const indicator = () => "Jump to latest message";
 	tui.scrollToEndIndicator = indicator;
-	setToolMouseTui(tui);
-	try {
-		config.scrollButtonMode = "dock";
-		syncOfficialScrollToEnd(tui);
-		assert.equal(tui.scrollToEndIndicator, undefined);
-
-		config.scrollButtonMode = "native";
-		syncOfficialScrollToEnd(tui);
-		assert.equal(tui.scrollToEndIndicator(), "Back to bottom", "native 浮层换上 dock 文案");
-		scheduleScrollButtonSync(tui, WHEEL_DOWN_INPUT);
-		await new Promise((resolve) => setImmediate(resolve));
-		assert.equal(count(), 0, "native 模式不调度 dock 按钮重绘");
-		assert.deepEqual(renderScrollButton(80, fakeTheme()), []);
-
-		config.scrollButtonMode = "dock";
-		syncOfficialScrollToEnd(tui);
-		assert.equal(tui.scrollToEndIndicator, undefined);
-	} finally {
-		restoreNativeScrollIndicatorText();
-		config.scrollButtonMode = previousScrollButtonMode;
-		resetScrollButtonState();
-		setToolMouseTui(null);
-	}
+	disableOfficialScrollToEnd(tui);
+	disableOfficialScrollToEnd(tui);
+	assert.equal(tui.scrollToEndIndicator, undefined);
+	restoreOfficialScrollToEnd(tui);
+	restoreOfficialScrollToEnd(tui);
+	assert.equal(tui.scrollToEndIndicator, indicator);
 });
 
 // 计数：仅在离开底部期间累加，文案从 Back to bottom 切成 N new message(s)，回底清零。
 test("scroll button: accumulates new content count while scrolled up", async () => {
-	const dockPhrases: string[] = [];
-	const phrase = (text: string) => text.trim().replace(/^\[ ↓ | · Ctrl\+End \]$/g, "");
 	const { tui } = lazyFullscreenTui();
 	setToolMouseTui(tui);
 
@@ -170,19 +135,16 @@ test("scroll button: accumulates new content count while scrolled up", async () 
 		renderScrollButton(80, fakeTheme()).some((line) => line.includes("Back to bottom")),
 		"无新内容时保持 Back to bottom 文案",
 	);
-	dockPhrases.push(phrase(renderScrollButton(80, fakeTheme())[0]));
 
 	noteNewTranscriptItem();
 	let text = renderScrollButton(80, fakeTheme()).join("\n");
 	assert.ok(text.includes("[ ↓ 1 new message · Ctrl+End ]"), `单条用单数：${text}`);
-	dockPhrases.push(phrase(text));
 
 	noteNewTranscriptItem();
 	noteNewTranscriptItem();
 	text = renderScrollButton(80, fakeTheme()).join("\n");
 	assert.ok(text.includes("[ ↓ 3 new messages · Ctrl+End ]"), `多条用复数：${text}`);
 	assert.ok(!text.includes("Back to bottom"), "有计数时不再显示原正文");
-	dockPhrases.push(phrase(text));
 
 	// 滚回底部：按钮隐藏且计数清零；再离开底部时从 0 重新计数。
 	tui.isFollowingOutput = true;
@@ -214,27 +176,6 @@ test("scroll button: accumulates new content count while scrolled up", async () 
 	assert.equal(getScrollButtonNewCount(), 0, "已跟随底部时不计入新内容");
 	assert.deepEqual(renderScrollButton(80, fakeTheme()), [], "校正后按钮隐藏");
 
-	// 同一组 0 / 1 / N 项通过 native 回调发出，必须与 dock 的正文完全相同。
-	const previous = { ...config };
-	try {
-		config.scrollButtonMode = "native";
-		tui.isFollowingOutput = false;
-		tui.scrollToEndIndicator = () => "Jump to latest message";
-		syncOfficialScrollToEnd(tui);
-		const nativePhrases = [tui.scrollToEndIndicator()];
-		noteNewTranscriptItem();
-		nativePhrases.push(tui.scrollToEndIndicator());
-		noteNewTranscriptItem();
-		noteNewTranscriptItem();
-		nativePhrases.push(tui.scrollToEndIndicator());
-		assert.deepEqual(nativePhrases, dockPhrases);
-		tui.isFollowingOutput = true;
-		syncOfficialScrollToEnd(tui);
-		assert.equal(getScrollButtonNewCount(), 0, "native 跟随输出时同样清零");
-	} finally {
-		restoreNativeScrollIndicatorText();
-		Object.assign(config, previous);
-	}
 	resetScrollButtonState();
 	setToolMouseTui(null);
 });

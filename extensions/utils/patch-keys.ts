@@ -12,16 +12,10 @@
  * 底层仍是 globalThis[symbol]，因此外部（含测试）直接读 globalThis 槽不受影响。
  */
 
-// ── compact / compact-thinking 协调 ──
-export const COMPACT_MODE_PATCH_KEY = Symbol.for("pi.ccstyle.compact-mode-patch");
+// ── compact-thinking 协调 ──
 export const COMPACT_THINKING_PATCH_KEY = Symbol.for("pi.ccstyle.compact-thinking-update");
 export const PROTOTYPE_ORIGINAL_KEY = Symbol.for("pi.ccstyle.prototype-original");
 export const COMPACT_THINKING_OWNER = Symbol.for("pi.ccstyle.compact-thinking-owner");
-
-// ── assistant 展开状态（实例标记） ──
-export const ASSISTANT_SET_EXPANDED_KEY = Symbol.for("pi.ccstyle.compact-assistant-set-expanded");
-export const ASSISTANT_TOGGLE_ROUND_KEY = Symbol.for("pi.ccstyle.compact-assistant-toggle-round");
-export const ASSISTANT_REENTRY_KEY = Symbol.for("pi.ccstyle.compact-assistant-reentry");
 
 // ── 工具渲染补丁 ──
 export const GLOBAL_TOOL_RENDER_PATCH = Symbol.for("pi.ccstyle.global-tool-render-patch");
@@ -29,8 +23,6 @@ export const COMPONENT_TOOL_RENDER_MODE = Symbol.for("pi.ccstyle.component-tool-
 export const TOOL_EXPANDED_BACKGROUND_PATCH = Symbol.for(
 	"pi.ccstyle.tool-expanded-background-patch",
 );
-// write 归属：注册期确认一次，渲染期据此决定是否提供 rich diff。
-export const WRITE_OWNERSHIP_SLOT = Symbol.for("pi.ccstyle.write-ownership");
 
 // ── 消息组件补丁 ──
 export const MESSAGE_DISPLAY_PATCH = Symbol.for("pi.ccstyle.message-display-patch");
@@ -54,8 +46,6 @@ export const TOOL_MOUSE_TUI_SLOT = Symbol.for("pi.ccstyle.tool-mouse-tui");
 export const SCROLL_BUTTON_STATE_SLOT = Symbol.for("pi.ccstyle.scroll-button-state");
 export const OFFICIAL_SCROLL_TO_END_KEY = Symbol.for("pi.ccstyle.official-scroll-to-end");
 export const FLUSH_DOCKED_BASH_PATCH = Symbol.for("pi.ccstyle.flush-docked-bash-patch");
-export const EARLY_STARTUP_HEADER_PATCH = Symbol.for("pi.ccstyle.early-startup-header-patch");
-export const EARLY_STARTUP_HEADER_SWAP_KEY = Symbol.for("pi.ccstyle.early-startup-header-swap");
 export const TOOL_HOVER_STATE_KEY = Symbol.for("pi.ccstyle.tool-hover-state");
 
 // ── rich diff 组件标记 ──

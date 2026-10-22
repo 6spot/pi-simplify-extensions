@@ -18,7 +18,6 @@ import {
 	visibleWidth,
 } from "@earendil-works/pi-tui";
 import { UserMessageComponent } from "@earendil-works/pi-coding-agent";
-import { config } from "../../config/config.ts";
 import {
 	patchRegistry,
 	STICKY_PROMPT_FRAME_PATCH,
@@ -27,7 +26,7 @@ import {
 } from "../../utils/patch-keys.ts";
 import { isToolTuiFullscreen } from "../tool/names.ts";
 import type { SgrMousePacket } from "./packets.ts";
-import { dockScrollButtonActive, setScrollButtonVisible } from "./scroll.ts";
+import { setScrollButtonVisible } from "./scroll.ts";
 
 /** 消息正文首行/末行的零宽 APC 标记；终端忽略，合成前剥离。 */
 const MESSAGE_START = "\x1b_cc:p\x07";
@@ -80,11 +79,6 @@ export function resetStickyPromptState(): void {
 	state.layout = null;
 	state.visible = false;
 	state.hovered = false;
-}
-
-/** 功能开关：仅 fullscreen 生效，off 模式还原原生渲染。 */
-function stickyPromptActive(): boolean {
-	return config.stickyUserMessage;
 }
 
 function setStickyHovered(hovered: boolean): boolean {
@@ -270,7 +264,7 @@ export function renderStickyPromptScreen(
 ): string[] {
 	const stripped = stripMessageMarkers(screen);
 	const state = stickyState();
-	const info = stickyPromptActive() ? computeStickyPrompt(tui, layout) : null;
+	const info = computeStickyPrompt(tui, layout);
 	const sameTarget = Boolean(
 		info && state.visible && state.row === info.row && state.jumpRow === info.jumpRow,
 	);
@@ -298,7 +292,7 @@ export function renderStickyPromptScreen(
 /** 行与列都落在本帧画出的粘性条内。滚动条那一列在条外。 */
 export function stickyBarHit(tui: any, packet: SgrMousePacket): boolean {
 	const state = stickyState();
-	if (!stickyPromptActive() || !state.visible || state.layout !== tui?.currentLayout) return false;
+	if (!state.visible || state.layout !== tui?.currentLayout) return false;
 	if (packet.row - 1 !== state.row) return false;
 	const col = packet.col - 1;
 	return col >= state.x && col < state.x + state.width;
@@ -320,7 +314,6 @@ export function updateStickyPromptHover(tui: any, packet: SgrMousePacket): boole
  * 那格是滑块时不拦，照常拖动；没有滚动条、滚动条不可见时也不拦。
  */
 export function scrollbarTopTrackHit(tui: any, packet: SgrMousePacket): boolean {
-	if (!stickyPromptActive()) return false;
 	const state = stickyState();
 	if (!state.visible || state.layout !== tui?.currentLayout) return false;
 	const box = findScrollBox(tui?.currentLayout?.root, tui?.getPrimaryScrollView?.());
@@ -338,7 +331,7 @@ export function handleStickyPromptClick(tui: any, packet: SgrMousePacket): boole
 	const view = tui.getPrimaryScrollView?.();
 	if (typeof view?.scrollTo === "function") {
 		view.scrollTo(state.jumpRow, { disableFollow: true });
-		if (view.isFollowingEnd === false && dockScrollButtonActive()) setScrollButtonVisible(true);
+		if (view.isFollowingEnd === false) setScrollButtonVisible(true);
 	}
 	// 落点已到消息头，这一帧的粘性行立即失效；等下一帧按新位置重算。
 	state.visible = false;

@@ -101,7 +101,7 @@ export default function claudeCodeStyle(pi: ExtensionAPI): void {
 	});
 }
 
-export { preservesOriginalRenderer, shouldRenderRichDiff } from "./default-mode.ts";
+export { shouldRenderRichDiff } from "./default-mode.ts";
 export { isMcpToolDefinition, mcpToolTitle } from "./tool/mcp-title.ts";
 export { ExpandedToolIoView, ExpandedToolResultText, formatToolInputArgs } from "./tool/tool-io.ts";
 export { SHOW_MORE_LABEL } from "./tool/result.ts";

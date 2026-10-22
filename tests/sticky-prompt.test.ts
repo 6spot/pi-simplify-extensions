@@ -12,7 +12,6 @@ import {
 	visibleWidth,
 } from "@earendil-works/pi-tui";
 import { createJiti } from "jiti";
-import { config } from "../extensions/config/config.ts";
 import { setToolTuiFullscreen } from "../extensions/renderer/tool/names.ts";
 import {
 	computeStickyPrompt,
@@ -124,13 +123,11 @@ function fakeTheme() {
 	};
 }
 
-/** 每个用例后复原全局状态：配置开关、补丁、跨帧缓存。 */
+/** 每个用例后复原全局状态：补丁、跨帧缓存。 */
 function withSticky<T>(body: () => T): T {
-	const enabled = config.stickyUserMessage;
 	try {
 		return body();
 	} finally {
-		config.stickyUserMessage = enabled;
 		setToolTuiFullscreen(undefined as any);
 		disposeStickyPromptPatches();
 		resetStickyPromptState();
@@ -338,24 +335,6 @@ test("sticky prompt: stale frame state does not act", () => {
 		frame.tui.currentLayout = { root: null };
 		assert.equal(handleStickyPromptClick(frame.tui, { row: 1, col: 1 } as any), false);
 		assert.equal(updateStickyPromptHover(frame.tui, { row: 1, col: 1 } as any), false);
-	});
-});
-
-test("sticky prompt: switched off keeps the transcript unchanged", () => {
-	withSticky(() => {
-		const content = [...messageLines("tall message", 40), ...assistantLines(10)];
-		const frame = makeFrame(content, 25, 10);
-		config.stickyUserMessage = false;
-		const rendered = renderStickyPromptScreen(
-			frame.tui,
-			frame.screen,
-			frame.layout,
-			VIEWPORT_WIDTH,
-		);
-		assert.deepEqual(rendered, frame.screen);
-		assert.equal(updateStickyPromptHover(frame.tui, { row: 1, col: 1 } as any), false);
-		assert.equal(handleStickyPromptClick(frame.tui, { row: 1, col: 1 } as any), false);
-
 	});
 });
 

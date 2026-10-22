@@ -67,8 +67,7 @@ const createFooter =
 		let gitStats: GitStats | undefined;
 		let disposed = false;
 		const refresher = createGitStatsRefresher({
-			getMode: () => "working" as const,
-			query: (_mode, signal) => readGitStats(ctx.cwd, "working", signal),
+			query: (signal) => readGitStats(ctx.cwd, signal),
 			onChange: (value) => {
 				gitStats = value;
 				if (!disposed) tui.requestRender();

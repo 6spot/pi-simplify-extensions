@@ -17,7 +17,7 @@ const REFRESH_INTERVAL_MS = 1_000;
 function briefActivity(name: string, args: any): string {
 	const path = typeof args?.path === "string" ? args.path
 		: typeof args?.file_path === "string" ? args.file_path : "";
-	const compact = (text: string) => text.replace(/[\\x00-\\x1f\\x7f]/g, " ").trim().slice(0, 72);
+	const compact = (text: string) => text.replace(/[\x00-\x1f\x7f]/g, " ").trim().slice(0, 72);
 	const item = compact(path);
 	switch (name) {
 		case "read": return item ? `Reading ${item}` : "Reading files";

@@ -1,6 +1,4 @@
-import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
-import { lstat, mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, isAbsolute, resolve } from "node:path";
+import { lstat, readFile } from "node:fs/promises";
 
 export const MAX_COMPARABLE_WRITE_BYTES = 512_000;
 export const MAX_WRITE_METADATA_ENTRIES = 100;
@@ -71,43 +69,5 @@ export async function capturePreviousContent(absolutePath: string): Promise<Writ
 			fileExistedBeforeWrite: true,
 			diffUnavailableReason: "previous file is not comparable UTF-8 text",
 		};
-	}
-}
-
-export async function executeWriteWithMetadata(
-	store: WriteExecutionMetadataStore,
-	toolCallId: string,
-	params: { path: string; content: string },
-	signal: AbortSignal | undefined,
-	cwd: string,
-): Promise<{ content: Array<{ type: "text"; text: string }>; details: undefined }> {
-	const absolutePath = isAbsolute(params.path) ? params.path : resolve(cwd, params.path);
-	store.delete(toolCallId);
-	try {
-		return await withFileMutationQueue(absolutePath, async () => {
-			const throwIfAborted = () => {
-				if (signal?.aborted) throw new Error("Operation aborted");
-			};
-			throwIfAborted();
-			const metadata = await capturePreviousContent(absolutePath);
-			throwIfAborted();
-			await mkdir(dirname(absolutePath), { recursive: true });
-			throwIfAborted();
-			await writeFile(absolutePath, params.content, "utf8");
-			// The file is already changed. A later abort must not report failure.
-			store.set(toolCallId, metadata);
-			return {
-				content: [
-					{
-						type: "text",
-						text: `Successfully wrote ${Buffer.byteLength(params.content, "utf8")} bytes to ${params.path}`,
-					},
-				],
-				details: undefined,
-			};
-		});
-	} catch (error) {
-		store.delete(toolCallId);
-		throw error;
 	}
 }

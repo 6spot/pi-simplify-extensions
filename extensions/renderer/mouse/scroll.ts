@@ -5,7 +5,6 @@ import {
 	visibleWidth,
 	type Keybinding,
 } from "@earendil-works/pi-tui";
-import { config } from "../../config/config.ts";
 import { isLazyProxyTui } from "../../utils/fullscreen-detect.ts";
 import { parseSgrMousePackets } from "./packets.ts";
 import {
@@ -68,15 +67,7 @@ export function setScrollButtonVisible(visible: boolean): void {
 export function noteNewTranscriptItem(): void {
 	const state = scrollButtonState();
 	const tui = getToolMouseTui();
-	if (nativeScrollTextEnabled(tui)) {
-		syncOfficialScrollToEnd(tui);
-		if (nativeScrollTextPatch && !isFullscreenAtBottom(tui)) {
-			state.newCount += 1;
-			tui.requestRender?.();
-		}
-		return;
-	}
-	if (!dockScrollButtonActive() || !state.visible || !tui) return;
+	if (!state.visible || !tui) return;
 	// 提交新消息时官方可能直接跳回底部（不经过滚动输入）：先按实时跟随状态校正，
 	// 否则跟随期间的内容会被当成“离开底部时的新消息”计入。
 	if (isAtTranscriptBottom(tui)) {
@@ -109,17 +100,6 @@ export function resetScrollButtonState(): void {
 
 let scrollButtonSyncScheduled = false;
 
-// 交互开关只取决于配置模式：原实现按 isLazyProxyTui(toolMouseTui) 分两分支，
-// 两分支恒真（0.84+ 惰性 Proxy 下判定不再影响开关），折叠为单条件。
-export function toolMouseInteractionActive(): boolean {
-	return true;
-}
-
-/** dock 模式才用扩展的独占行；native 或 ccstyle off 时交还 Pi 原生浮层。 */
-export function dockScrollButtonActive(): boolean {
-	return toolMouseInteractionActive() && config.scrollButtonMode === "dock";
-}
-
 /** 惰性 Proxy 官方 fullscreen（TuiAltScreen）判定。 */
 export function fullscreenLazyTui(tui: any): boolean {
 	return isLazyProxyTui(tui) && tui.mode === "fullscreen";
@@ -137,63 +117,12 @@ export function disableOfficialScrollToEnd(tui: any): void {
 	tui.scrollToEndIndicator = undefined;
 }
 
-/** /ccstyle off 或 teardown 时还回官方 overlay。 */
+/** teardown 时还回官方 overlay。 */
 export function restoreOfficialScrollToEnd(tui: any): void {
 	if (!tui) return;
 	const original = tui[OFFICIAL_SCROLL_TO_END_KEY]?.original;
 	if (typeof original === "function") tui.scrollToEndIndicator = original;
 	tui[OFFICIAL_SCROLL_TO_END_KEY] = undefined;
-}
-
-/** dock 模式替换官方浮层；native 保留 Pi 原生浮层并换上 dock 文案；ccstyle off 还原 Pi 原样。 */
-export function syncOfficialScrollToEnd(tui: any): void {
-	if (!nativeScrollTextEnabled(tui)) restoreNativeScrollIndicatorText();
-	if (dockScrollButtonActive()) {
-		disableOfficialScrollToEnd(tui);
-		return;
-	}
-	restoreOfficialScrollToEnd(tui);
-	if (nativeScrollTextEnabled(tui)) {
-		// 离开 dock 时清零一次；native 的后续渲染保留共享计数。
-		if (getScrollButtonVisible()) setScrollButtonVisible(false);
-		setScrollButtonHovered(false);
-		syncNativeScrollIndicatorText(tui);
-		return;
-	}
-	setScrollButtonVisible(false);
-	setScrollButtonHovered(false);
-}
-
-/** 只记录文案补丁；dock 的显隐、快捷键和原生浮层开关仍走原路径。 */
-let nativeScrollTextPatch: { renderer: any; original: () => string } | undefined;
-
-function nativeScrollTextEnabled(tui: any): boolean {
-	return (
-		toolMouseInteractionActive() && config.scrollButtonMode === "native" && fullscreenLazyTui(tui)
-	);
-}
-
-/** widget 销毁或离开 native 模式时还原 Pi 的原始回调。 */
-export function restoreNativeScrollIndicatorText(): void {
-	if (!nativeScrollTextPatch) return;
-	const { renderer, original } = nativeScrollTextPatch;
-	renderer.scrollToEndIndicator = original;
-	nativeScrollTextPatch = undefined;
-	scrollButtonState().newCount = 0;
-}
-
-function syncNativeScrollIndicatorText(tui: any): void {
-	// Pi 的稳定 Proxy 会重绑捕获的方法；文案回调必须从真实 renderer 上取得。
-	const renderer = tui.valueOf();
-	if (nativeScrollTextPatch?.renderer !== renderer) restoreNativeScrollIndicatorText();
-	if (!nativeScrollTextPatch) {
-		const original = renderer.scrollToEndIndicator;
-		if (typeof original !== "function") return;
-		nativeScrollTextPatch = { renderer, original };
-		renderer.scrollToEndIndicator = () =>
-			original.call(renderer).replace("Jump to latest message", scrollButtonText());
-	}
-	if (isFullscreenAtBottom(renderer)) scrollButtonState().newCount = 0;
 }
 
 /** 官方 fullscreen：是否已跟随 transcript 底部（按钮隐藏条件）。 */
@@ -264,39 +193,25 @@ export function hideScrollButton(tui: any): void {
 export function scheduleScrollButtonSync(tui: any, data: string): void {
 	if (
 		!fullscreenLazyTui(tui) ||
-		!dockScrollButtonActive() ||
 		!isScrollNavigationInput(data) ||
 		scrollButtonSyncScheduled
 	)
 		return;
 	scrollButtonSyncScheduled = true;
-	const previousLines = tui.previousLines;
-	const check = (attempt: number) => {
+	const check = () => {
 		scrollButtonSyncScheduled = false;
-		if (getToolMouseTui() !== tui || !dockScrollButtonActive()) return;
-		// Pi renders on its own frame timer. Inspect the resulting viewport before
-		// showing the button so empty or non-scrollable transcripts never flash it.
-		const rendered = tui.previousLines !== previousLines;
-		// fullscreen 下 isFollowingOutput 是即时状态，无需等待官方帧渲染。
-		if (!rendered && attempt < 4 && !fullscreenLazyTui(tui)) {
-			scrollButtonSyncScheduled = true;
-			const timer = setTimeout(() => check(attempt + 1), 16);
-			if (typeof timer === "object" && timer !== null && "unref" in timer) {
-				(timer as { unref: () => void }).unref();
-			}
-			return;
-		}
+		if (getToolMouseTui() !== tui) return;
 		const nextVisible = !isAtTranscriptBottom(tui);
 		if (nextVisible !== getScrollButtonVisible()) {
 			setScrollButtonVisible(nextVisible);
 			tui.requestRender?.();
 		}
 	};
-	process.nextTick(() => check(0));
+	process.nextTick(check);
 }
 
 export function updateScrollButtonFromInput(tui: any, data: string): void {
-	if (!fullscreenLazyTui(tui) || !dockScrollButtonActive()) return;
+	if (!fullscreenLazyTui(tui)) return;
 	if (matchesKey(data, "enter") || matchesKey(data, "return")) hideScrollButton(tui);
 }
 
@@ -309,7 +224,6 @@ function scrollButtonText(): string {
 
 export function renderScrollButton(width: number, theme: any): string[] {
 	if (
-		!dockScrollButtonActive() ||
 		!getScrollButtonVisible() ||
 		!fullscreenLazyTui(getToolMouseTui())
 	)

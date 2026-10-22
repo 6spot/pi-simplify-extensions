@@ -1,15 +1,14 @@
 /**
  * 顶层共享的 ANSI/终端控制序列处理。
  *
- * 收敛原先散落在 renderer/grouping.ts / renderer/mouse/packets.ts /
- * renderer/compact-mode.ts 的重复剥离逻辑，供 renderer 与 feature 共用。
+ * 供工具分组、鼠标命中计算和 feature 共用。
  */
 
 /** 单个 CSI 序列（颜色、光标等 SGR/CUP/ED 等）。 */
 const CSI_SEQUENCE_RE = /\x1b\[[0-?]*[ -/]*[@-~]/g;
 /** OSC 序列（如 \x1b]8;;url\x07 或 ST 结尾）。 */
 const OSC_SEQUENCE_RE = /\x1b\][^\x07]*(?:\x07|\x1b\\)/g;
-/** compact-mode 原有 hasVisibleText 用的更严格 OSC（内容不允许内嵌 ESC）。 */
+/** 可见文本判断使用的严格 OSC（内容不允许内嵌 ESC）。 */
 const OSC_SEQUENCE_STRICT_RE = /\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g;
 
 /** 剥离一行内所有 CSI 序列。 */
@@ -29,7 +28,7 @@ export function stripTerminalSequences(value: string): string {
 
 /** 去掉行内所有 CSI/OSC 序列后是否仍有可见文本（判断工具卡首尾内容行）。 */
 export function hasVisibleText(line: string): boolean {
-	// OSC 用更严格的变体：内容内嵌 ESC 时不吞并后续文本，保持 compact-mode 原有语义。
+	// OSC 用更严格的变体：内容内嵌 ESC 时不吞并后续文本。
 	return line.replace(CSI_SEQUENCE_RE, "").replace(OSC_SEQUENCE_STRICT_RE, "").trim().length > 0;
 }
 
