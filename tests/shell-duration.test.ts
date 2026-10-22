@@ -91,7 +91,7 @@ test("运行中：shell 报已用时间，并且随重绘更新", async () => {
 		tool.updateResult({ content: [], isError: false }, true);
 
 		const running = render(tool);
-		assert.match(running[0]!, /^\s*● Bash sleep 5/, "工具行用静态标记表示进行中");
+		assert.match(running[0]!, /^\s*○ Bash sleep 5/, "工具行用静态空心圆表示进行中");
 		assert.match(running[1]!, /Pending… · 0ms$/, "刚开跑报 0ms");
 
 		now = 1_250;

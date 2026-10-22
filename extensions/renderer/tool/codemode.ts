@@ -280,7 +280,7 @@ function statusIcon(status: unknown, theme: any): string {
 			return theme.fg("muted", "⊘");
 		default:
 			// Working 提供活动动画；子调用保留静态进行中标记。
-			return theme.fg("dim", "●");
+			return theme.fg("accent", "○");
 	}
 }
 

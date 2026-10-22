@@ -27,7 +27,7 @@ function started(name: string, id: string, args: any = {}) {
 	return component;
 }
 
-test("restored tools still render as running with the braille loader", () => {
+test("restored tools render as running with a hollow status marker", () => {
 	const hooks = installToolGrouping(() => true);
 	try {
 		const parent = new Container() as any;
@@ -39,7 +39,7 @@ test("restored tools still render as running with the braille loader", () => {
 			.map((line: string) => line.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, ""))
 			.filter((line: string) => line.trim());
 		assert.match(rendered[0], /2 running/);
-		assert.ok(rendered.some((line: string) => /●/.test(line)));
+		assert.ok(rendered.some((line: string) => /○/.test(line)));
 		assert.doesNotMatch(rendered.join("\n"), /queued/);
 	} finally {
 		hooks.shutdown();
@@ -68,12 +68,12 @@ test("mixed tools group across three empty separators while edit/write and conte
 			.filter((line: string) => line.trim());
 		assert.match(
 			collapsed[0],
-			/^ ● Multiple Tools: 3 running · Read×1, Bash×1, Grep×1 · click to show more$/,
+			/^ ○ Multiple Tools: 3 running · Read×1, Bash×1, Grep×1 · click to show more$/,
 		);
 		assert.equal(collapsed.filter((line: string) => line.trim()).length, 4);
-		assert.match(collapsed[1], /^ ├ ● Read /);
-		assert.match(collapsed[2], /^ ├ ● Bash /);
-		assert.match(collapsed[3], /^ └ ● Grep /);
+		assert.match(collapsed[1], /^ ├ ○ Read /);
+		assert.match(collapsed[2], /^ ├ ○ Bash /);
+		assert.match(collapsed[3], /^ └ ○ Grep /);
 		bash.updateResult({ content: [], isError: false });
 		grep.updateResult({ content: [], isError: true });
 		assert.match(
@@ -86,7 +86,7 @@ test("mixed tools group across three empty separators while edit/write and conte
 			.render(100)
 			.map((line: string) => line.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, ""))
 			.join("\n");
-		assert.doesNotMatch(expanded, /[├└] ● {2}/, "expanded tool titles have one separator");
+		assert.doesNotMatch(expanded, /[├└] ○ {2}/, "expanded tool titles have one separator");
 		group.setExpanded(false);
 
 		parent.addChild(tool("edit", "edit"));
@@ -170,7 +170,7 @@ test("expanded native cards align nested trees through interleaved ANSI padding"
 		assert.equal(backgroundIndex, 0, "expanded panel background covers the full row");
 		assert.match(
 			stripAnsi(rendered[2]),
-			/^ ├ ● Read/,
+			/^ ├ ○ Read/,
 			"panel starts directly with the loading tool",
 		);
 		assert.equal(
@@ -181,7 +181,7 @@ test("expanded native cards align nested trees through interleaved ANSI padding"
 		const expanded = rendered.map(stripAnsi).join("\n");
 		assert.match(
 			expanded,
-			/^ ├ ● Read sample\.ts\s*$/m,
+			/^ ├ ○ Read sample\.ts\s*$/m,
 			"expanded branch matches collapsed position",
 		);
 		assert.match(expanded, /^ │ ├ Input\s*$/m, "nested tree aligns with the status dot");
@@ -302,11 +302,18 @@ test("group status and tool labels use the injected active theme", () => {
 		const parent = new Container() as any;
 		const read = tool("read", "themed-read");
 		const bash = tool("bash", "themed-bash");
-		read.updateResult({ content: [], isError: false });
-		bash.updateResult({ content: [], isError: false });
 		parent.addChild(read);
 		parent.addChild(bash);
+		const pending = parent.children[0].render(200).join("\n");
+		assert.match(pending, /<accent>○<\/accent>/);
+		assert.match(pending, /<accent>2<\/accent> running/);
+		read.updateResult({ content: [], isError: false });
+		const mixed = parent.children[0].render(200).join("\n");
+		assert.match(mixed, /<accent>○<\/accent>/);
+		assert.match(mixed, /<success>✓<\/success>/);
+		bash.updateResult({ content: [], isError: false });
 		const rendered = parent.children[0].render(200).join("\n");
+		assert.doesNotMatch(rendered, /○/);
 		assert.match(rendered, /<success>●<\/success>/, "group header stays a status dot");
 		assert.match(rendered, /<dim>[├└]<\/dim> <success>✓<\/success>/, "children use checks");
 		assert.match(rendered, /<success>2<\/success> done/);
@@ -502,7 +509,7 @@ test("powershell 分组行显示具体命令（issue 26）", () => {
 		parent.addChild(started("powershell", "ps-2", { command: "$env:FOO = 'bar'" }));
 		const group = parent.children[0] as ToolGroupComponent;
 		const collapsed = plain(group.render(120));
-		assert.match(collapsed[0], /^ ● PowerShell: 2 running/);
+		assert.match(collapsed[0], /^ ○ PowerShell: 2 running/);
 		assert.match(collapsed[1], /PowerShell Get-ChildItem -Recurse$/);
 		assert.match(collapsed[2], /PowerShell \$env:FOO = 'bar'$/);
 	} finally {
@@ -562,11 +569,11 @@ test("折叠分组行：codemode 报结果统计，没结果时退回代码预�
 			.render(120)
 			.map((line: string) => line.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "").trimEnd());
 
-		assert.match(rows[1]!, /^ ● Codemode: 1 running · 2 done/);
+		assert.match(rows[1]!, /^ ○ Codemode: 1 running · 2 done/);
 		assert.equal(rows[2], " ├ ✓ Codemode 1 call · 1 line output");
 		assert.equal(rows[3], " ├ ✓ Codemode 2 calls · 2 lines output");
 		// 还没结果：退回参数摘要，同样不带 code 预览
-		assert.match(rows[4]!, /^ └ ● Codemode$/);
+		assert.match(rows[4]!, /^ └ ○ Codemode$/);
 	} finally {
 		hooks.shutdown();
 	}

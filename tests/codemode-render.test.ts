@@ -128,8 +128,8 @@ test("折叠态：运行中用静态标记，汇总报 running", () => {
 		isError: false,
 		width: 100,
 	});
-	assert.match(lines[0]!, /^ {1}├ ● Ffgrep "mcp" in src\/$/);
-	assert.match(lines[1]!, /^ {1}├ ● Fffind /);
+	assert.match(lines[0]!, /^ {1}├ ○ Ffgrep "mcp" in src\/$/);
+	assert.match(lines[1]!, /^ {1}├ ○ Fffind /);
 	assert.equal(lines[2], " └ 2 calls running");
 });
 

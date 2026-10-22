@@ -108,7 +108,7 @@ function status(tool: any): ToolStatus {
 function statusIcon(value: ToolStatus): string {
 	if (value === "success") return "✓";
 	if (value === "error") return "✗";
-	return "●";
+	return "○";
 }
 
 function visibleLines(lines: string[]): string[] {
@@ -240,7 +240,7 @@ function collapsedGroupToolLine(
 	width: number,
 ): string {
 	const toolStatus = status(tool);
-	const color = toolStatus === "pending" ? "dim" : toolStatus;
+	const color = toolStatus === "pending" ? "accent" : toolStatus;
 	const summary = askUserResultSummary(tool) ?? codemodeResultSummary(tool) ?? toolSummary(tool);
 	const prefix = ` ${fg("dim", last ? "└" : "├")} ${fg(color, statusIcon(toolStatus))} `;
 	const detail = fg("dim", summary.detail);
@@ -268,7 +268,7 @@ function groupCountText(
 		.filter((key) => counts[key])
 		.map((key) => {
 			const label = key === "pending" ? "running" : key === "success" ? "done" : "failed";
-			const color = key === "pending" ? "dim" : key;
+			const color = key === "pending" ? "accent" : key;
 			return `${fg(color, String(counts[key]))} ${label}`;
 		})
 		.join(` ${fg("dim", "·")} `);
@@ -457,14 +457,14 @@ export class ToolGroupComponent extends Container {
 		const names = new Set(this.children.map(toolName));
 		const label = names.size === 1 ? toolTitle(this.children[0]) : "Multiple Tools";
 		const overall = groupOverallStatus(counts);
-		const overallColor = overall === "pending" ? "dim" : overall;
-		// 圆点保持 dim；hover 只高亮可点击文字。
+		const overallColor = overall === "pending" ? "accent" : overall;
+		// 提示分隔点保持 dim；hover 只高亮可点击文字。
 		const hintText = this._expanded ? collapseHintText() : showMoreHintText();
 		const hint = `${fg("dim", "·")} ${fg(this.hintHovered ? "text" : "dim", hintText)}`;
 		const rowWidth = toolViewportWidth(width);
 		// 工具列表让位给展开提示：提示被截断的话，鼠标层要在行尾找 `click to show more`
 		// 就找不到，整张卡在窄宽度下点不开。名字截断后子行里仍能看全。
-		const head = ` ${fg(overallColor, "●")} ${label}: ${countText}`;
+		const head = ` ${fg(overallColor, overall === "pending" ? "○" : "●")} ${label}: ${countText}`;
 		const tail = ` ${hint}`;
 		const listRoom = rowWidth - visibleWidth(head) - visibleWidth(tail) - 3;
 		// 连一个工具名都放不下就不放列表：退化成 `· …` 只会把行撑爆。
@@ -497,7 +497,7 @@ export class ToolGroupComponent extends Container {
 		for (let index = 0; index < total; index++) {
 			const tool = this.children[index];
 			const toolStatus = statuses[index];
-			const color = toolStatus === "pending" ? "dim" : toolStatus;
+			const color = toolStatus === "pending" ? "accent" : toolStatus;
 			const branch = index === total - 1 ? "└" : "├";
 			const continuation = index === total - 1 ? "  " : "│ ";
 			if (!this._expanded) {
