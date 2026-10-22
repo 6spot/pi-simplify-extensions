@@ -1044,6 +1044,9 @@ export function teardownToolMouseInteraction(
 	} catch {
 		// The terminal may already be closed during shutdown.
 	}
+	// Restore the host callback before widget.dispose() clears its native patch snapshot.
+	restoreOfficialScrollToEnd(getToolMouseTui());
+	restoreNativeScrollIndicatorText();
 	try {
 		toolMouseUi?.setWidget?.(TOOL_MOUSE_WIDGET_KEY, undefined);
 	} catch {
