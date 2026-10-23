@@ -24,7 +24,7 @@ pi install git:github.com/6spot/pi-simplify-extensions
 
 本地开发可在项目目录运行 `pi -e .`。检查代码可运行 `npm ci`、`npm run typecheck`、`npm test`。
 
-在 Pi 的 `/settings` 中切换主题 `simplify-dark` 或 `simplify-light`。两者采用石墨蓝配色：中性工具卡与输入框用不同深浅区分，在真彩色和 256 色终端中都保留层次；工具摘要中的命令、路径和展开后的普通输入值用蓝灰色，输出和辅助信息保持中性灰，行内代码用柔和紫色。进行中使用蓝色空心圆，成功使用绿色标记；Diff 保留低饱和的增删底色和行内强调。原生和 Compact Thinking 思考文字统一使用比正文更淡的中性灰。
+在 Pi 的 `/settings` 中切换主题 `simplify-dark` 或 `simplify-light`。两者采用石墨蓝配色：中性工具卡与输入框用不同深浅区分，在真彩色和 256 色终端中都保留层次；工具摘要中的命令、路径和展开后的普通输入值用蓝灰色，输出和辅助信息保持中性灰，行内代码用与命令、路径一致的低饱和蓝灰色。进行中使用蓝色空心圆，成功使用绿色标记；Diff 保留低饱和的增删底色和行内强调。原生和 Compact Thinking 思考文字统一使用比正文更淡的中性灰。
 
 TUI 的正文背景由终端决定，主题中的页面底色用于 HTML 导出。Shell 输入目前按整段输入着色，已有代码高亮继续保留，不额外解析 Shell 语法。
 
