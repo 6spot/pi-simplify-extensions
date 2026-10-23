@@ -8,7 +8,7 @@ import {
 	renderCollapsedToolResult,
 	toolViewportWidth,
 } from "./result.ts";
-import { showMoreHintText } from "./names.ts";
+import { TOOL_INPUT_COLOR, showMoreHintText } from "./names.ts";
 import { createCodeBlockHighlighter } from "./diff/diff-highlight.ts";
 
 export class ExpandedToolResultText {
@@ -91,7 +91,7 @@ export class ExpandedToolIoView {
 	private truncated: { input: boolean; output: boolean } = { input: false, output: false };
 	/** 0-based header line indexes that carry show-more after last render. */
 	private showMoreHeaderRows: { input?: number; output?: number } = {};
-	/** Input 里的代码块（codemode 的 `code`）：着色行覆盖默认 dim/muted 样式。 */
+	/** Input 里的代码块（codemode 的 `code`）：原生高亮覆盖普通输入样式。 */
 	private inputCode?:
 		| {
 				startLine: number;
@@ -323,7 +323,7 @@ export class ExpandedToolIoView {
 			const wrapped: string[] = [];
 			for (const [index, source] of sourceLines.entries()) {
 				if (opts.input) {
-					// 代码块的行用着色版本（已剥缩进），其余走默认 dim/muted
+					// 代码块保留原生高亮（已剥缩进），其余按输入值与 dim 键着色
 					wrapped.push(...wrapInputLine(source, contentWidth, theme, this.inputCodeLine(index)));
 					continue;
 				}
@@ -438,12 +438,12 @@ export function isExpandedToolIoView(value: unknown): value is ExpandedToolIoVie
 	);
 }
 
-/** Input 行着色：`key: value` 拆成 dim 键 + muted 值，其余整行 muted。 */
+/** Input 行着色：`key: value` 拆成 dim 键与蓝灰输入值，其余整行用输入色。 */
 function styleInputSourceLine(line: string, theme: any): string {
 	const match = line.match(/^([A-Za-z_][\w.-]*)(:\s*)(.*)$/);
-	if (!match) return theme.fg("muted", line);
+	if (!match) return theme.fg(TOOL_INPUT_COLOR, line);
 	const [, key, sep, rest] = match;
-	return theme.fg("dim", key + sep) + theme.fg("muted", rest ?? "");
+	return theme.fg("dim", key + sep) + theme.fg(TOOL_INPUT_COLOR, rest ?? "");
 }
 
 /**
@@ -468,7 +468,7 @@ function wrapInputLine(
 	const parts = wrapTextWithAnsi(styledBody, Math.max(1, contentWidth - leadWidth));
 	const rows = parts.length ? parts : [styledBody];
 	if (!leadWidth) return rows;
-	const prefix = theme.fg("muted", lead);
+	const prefix = theme.fg(TOOL_INPUT_COLOR, lead);
 	return rows.map((row) => prefix + row);
 }
 

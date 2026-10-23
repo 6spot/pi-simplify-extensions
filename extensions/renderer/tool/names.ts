@@ -17,6 +17,9 @@ function clip(value: unknown): string {
 /** 载荷（入参 JSON / 脚本代码 / 路径值）至少留出这么多宽度才显示，否则整段省略（避免只剩一个孤零零的 " {…"）。 */
 const MIN_PAYLOAD_WIDTH = 10;
 
+/** Pi 没有独立工具输入槽位，复用链接蓝灰；muted 留给辅助信息。 */
+export const TOOL_INPUT_COLOR: ThemeColor = "mdLink";
+
 /** 品牌大小写固定写法；humanize 推导不出来的工具名写在这里。 */
 const TOOL_LABEL_OVERRIDES: Readonly<Record<string, string>> = {
 	powershell: "PowerShell",
@@ -405,7 +408,7 @@ function jsonArgs(args: any): string {
 
 /**
  * 标题行内容：main 是身份（工具名），用 toolTitle 色；路径值与载荷（入参 JSON、
- * 脚本代码、命令、查询…）是输入，单独用 muted。标题优先占宽，剩下的宽度给载荷；
+ * 脚本代码、命令、查询…）是输入，单独用 TOOL_INPUT_COLOR。标题优先占宽，剩下的宽度给载荷；
  * 载荷超宽时尾部省略，连 MIN_PAYLOAD_WIDTH 都放不下时整段省略。
  */
 export function renderToolSummary(
@@ -418,13 +421,13 @@ export function renderToolSummary(
 		const prefix = headToWidth(summary.path.prefix, width, "…");
 		const pathWidth = width - visibleWidth(prefix) - 1;
 		if (pathWidth < MIN_PAYLOAD_WIDTH) return fg("toolTitle", prefix);
-		return `${fg("toolTitle", prefix)} ${fg("muted", truncatePathToWidth(summary.path.value, Math.min(pathWidth, clipLimit())))}`;
+		return `${fg("toolTitle", prefix)} ${fg(TOOL_INPUT_COLOR, truncatePathToWidth(summary.path.value, Math.min(pathWidth, clipLimit())))}`;
 	}
 	const title = fitToolCallSummary(summary, width);
 	if (!summary.payload) return fg("toolTitle", title);
 	const room = width - visibleWidth(title);
 	return room >= MIN_PAYLOAD_WIDTH
-		? `${fg("toolTitle", title)}${fg("muted", headTruncateToWidth(` ${summary.payload}`, room))}`
+		? `${fg("toolTitle", title)}${fg(TOOL_INPUT_COLOR, headTruncateToWidth(` ${summary.payload}`, room))}`
 		: fg("toolTitle", title);
 }
 
