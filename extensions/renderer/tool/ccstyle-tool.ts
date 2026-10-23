@@ -194,7 +194,9 @@ export function createCcstyleTool(
 			const isPending =
 				visualState === "pending" ||
 				(!visualState && (context?.isPartial || context?.executionStarted));
-			const settledRawIcon = isPending ? "" : settledIcon(toolName, visualState);
+			let settledRawIcon = isPending ? "" : settledIcon(toolName, visualState);
+			// Codemode 展开为子调用树，成功容器标题与工具分组统一；子项仍用勾。
+			if (toolName === CODEMODE_TOOL_NAME && visualState === "success") settledRawIcon = "●";
 			const settledIconStyled = theme.fg(toolIconColor(context), settledRawIcon);
 			// Working 负责全局活动动画；工具行使用静态标记保留进行中状态。
 			const pendingIconStyled = () => theme.fg(toolIconColor(context), pendingIcon(toolName));

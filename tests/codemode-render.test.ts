@@ -423,30 +423,55 @@ test("调用行：codemode 只报工具名，代码不进标题（其他工具�
 	assert.equal(toolCallSummary("read", { path: "a.ts" }).path?.value, "a.ts");
 });
 
-test("单工具卡：子调用树线与标题勾对齐", () => {
+test("Codemode 容器标题随运行、完成、失败更新，子项和树线保持一致", () => {
 	const hooks = installDefaultMode(new WriteExecutionMetadataStore());
 	try {
-		const tool = new ToolExecutionComponent(
+		const createTool = (id: string) => new ToolExecutionComponent(
 			"codemode",
-			"cm-align",
+			id,
 			{ code: "return 1" },
 			{},
 			undefined,
 			{ theme, requestRender() {}, setStatus() {} } as any,
 			process.cwd(),
 		) as any;
-		tool.markExecutionStarted();
-		tool.updateResult(result());
-		const lines = tool
+		const tool = createTool("cm-align");
+		const render = (component = tool): string[] => component
 			.render(120)
 			.map((line: string) => line.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, ""))
-			.filter(Boolean);
-		const title = lines[0]!;
-		// 勾在 " ✓" 的第 2 列，├ 也应落在第 2 列。
-		const checkColumn = title.indexOf("✓");
-		assert.ok(checkColumn > 0, `标题应带勾: ${title}`);
-		const branchLine = lines.find((line: string) => line.includes("├"));
-		assert.equal(branchLine?.indexOf("├"), checkColumn, "子调用树线应与勾对齐");
+			.filter((line: string) => line.trim());
+		tool.markExecutionStarted();
+		assert.match(render()[0]!, /^ ○ Codemode/);
+
+		tool.updateResult(result({}, [
+			call(),
+			call({ id: "c/2", name: "bash", status: "running", durationMs: undefined }),
+		]), true);
+		const partial = render();
+		assert.match(partial[0]!, /^ ○ Codemode/);
+		assert.ok(partial.some((line) => /^ [├└] ✓ Ffgrep/.test(line)));
+		assert.ok(partial.some((line) => /^ [├└] ○ Bash/.test(line)));
+
+		tool.updateResult(result());
+		const completed = render();
+		assert.match(completed[0]!, /^ ● Codemode/);
+		assert.ok(completed.some((line) => /^ [├└] ✓ Ffgrep/.test(line)));
+		const markerColumn = completed[0]!.indexOf("●");
+		for (const line of completed.filter((line) => /[├└]/.test(line))) {
+			assert.equal(line.search(/[├└]/), markerColumn, "子调用树线应与容器标记对齐");
+		}
+		assert.deepEqual(render(), completed, "完成后重绘不复用旧的运行中状态");
+		tool.setExpanded(true);
+		assert.match(render()[0]!, /^ ● Codemode/);
+		tool.setExpanded(false);
+
+		const failedTool = createTool("cm-error");
+		failedTool.markExecutionStarted();
+		assert.match(render(failedTool)[0]!, /^ ○ Codemode/);
+		failedTool.updateResult(result({ isError: true }, [call({ status: "error", error: "boom" })]));
+		const failed = render(failedTool);
+		assert.match(failed[0]!, /^ ✗ Codemode/);
+		assert.ok(failed.some((line) => /^ [├└] ✗ Ffgrep/.test(line)));
 	} finally {
 		hooks.shutdown();
 	}
