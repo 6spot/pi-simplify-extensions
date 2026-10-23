@@ -17,8 +17,8 @@ function clip(value: unknown): string {
 /** 载荷（入参 JSON / 脚本代码 / 路径值）至少留出这么多宽度才显示，否则整段省略（避免只剩一个孤零零的 " {…"）。 */
 const MIN_PAYLOAD_WIDTH = 10;
 
-/** Pi 没有独立工具输入槽位，复用链接蓝灰；muted 留给辅助信息。 */
-export const TOOL_INPUT_COLOR: ThemeColor = "mdLink";
+/** 工具输入与行内代码共用暖灰；链接保留蓝色，muted 留给辅助信息。 */
+export const TOOL_INPUT_COLOR: ThemeColor = "mdCode";
 
 /** 品牌大小写固定写法；humanize 推导不出来的工具名写在这里。 */
 const TOOL_LABEL_OVERRIDES: Readonly<Record<string, string>> = {

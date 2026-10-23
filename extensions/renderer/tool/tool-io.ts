@@ -438,7 +438,7 @@ export function isExpandedToolIoView(value: unknown): value is ExpandedToolIoVie
 	);
 }
 
-/** Input 行着色：`key: value` 拆成 dim 键与蓝灰输入值，其余整行用输入色。 */
+/** Input 行着色：`key: value` 拆成 dim 键与暖灰输入值，其余整行用输入色。 */
 function styleInputSourceLine(line: string, theme: any): string {
 	const match = line.match(/^([A-Za-z_][\w.-]*)(:\s*)(.*)$/);
 	if (!match) return theme.fg(TOOL_INPUT_COLOR, line);

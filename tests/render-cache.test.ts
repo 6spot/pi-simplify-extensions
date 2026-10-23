@@ -170,7 +170,7 @@ test("ExpandedToolIoView labels Input and Output sections", () => {
 	assert.ok(lines.some((line) => /^ ├ Input/.test(line)));
 	assert.ok(lines.some((line) => /^ └ Output/.test(line)));
 	assert.ok(lines.some((line) => line.includes("path: src/a.ts")));
-	assert.ok(styled.some(([color, text]) => color === "mdLink" && text === "src/a.ts"));
+	assert.ok(styled.some(([color, text]) => color === "mdCode" && text === "src/a.ts"));
 	assert.ok(!styled.some(([color, text]) => color === "text" && text === "src/a.ts"));
 	assert.ok(lines.some((line) => line.includes("line one")));
 	assert.ok(lines.some((line) => line.includes("line two")));
