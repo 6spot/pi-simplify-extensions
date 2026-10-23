@@ -33,7 +33,7 @@ export function formatOneLineFooter(parts: FooterParts, width: number, theme: Fo
 	const available = Math.max(0, Math.floor(width));
 	if (!available) return "";
 	const fg = theme.fg.bind(theme);
-	const model = fg("accent", parts.model || "no-model");
+	const model = fg("dim", parts.model || "no-model");
 	const thinking = parts.thinking && parts.thinking !== "off"
 		? fg("dim", parts.thinking) : "";
 	const percentage = parts.contextPercent == null
