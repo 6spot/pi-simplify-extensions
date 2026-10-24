@@ -364,6 +364,31 @@ test("real Pi: background reports reach the parent model, busy steer and blocked
 				),
 			35000,
 		);
+		const firstSettled = f.records.findIndex((record) => record.type === "agent_settled");
+		assert.ok(firstSettled >= 0);
+		const widgetUpdates = f.records.filter(
+			(record) =>
+				record.type === "extension_ui_request" && record.widgetKey === "subagent-background-tasks",
+		);
+		const widgetAtParentIdle = f.records
+			.slice(0, firstSettled + 1)
+			.filter((record) => record.widgetKey === "subagent-background-tasks")
+			.at(-1);
+		assert.match(
+			widgetAtParentIdle?.widgetLines?.join("\n") ?? "",
+			/running/,
+			"background task remains visibly running after the parent's turn ends",
+		);
+		assert.ok(
+			widgetUpdates.some((record) =>
+				record.widgetLines?.some((line: string) => line.includes("waiting for parent")),
+			),
+		);
+		assert.equal(
+			widgetUpdates.at(-1)?.widgetLines,
+			undefined,
+			"completion clears the persistent status",
+		);
 		const parent = f.requests.filter((request) =>
 			JSON.stringify(request.messages).includes("PARENT_ASYNC_TEST"),
 		);

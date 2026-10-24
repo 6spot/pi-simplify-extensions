@@ -538,6 +538,7 @@ export default function (pi: ExtensionAPI) {
 		description: [
 			"Delegate tasks to specialized subagents with isolated context.",
 			"Set background:true in single mode to return a task ID immediately; semantic reports and completion are delivered automatically. Manage IDs with subagent_task.",
+			"When ending a reply while background tasks remain active, tell the user they are running or waiting. When they finish, give the user the actual result or failure; tool output alone is not your final answer.",
 			"Modes: single (agent + task), parallel (tasks array), chain (sequential with {previous} placeholder).",
 			`Default agent scope is "user" (from ${path.join(getAgentDir(), "agents")}).`,
 			`To enable project-local agents in ${CONFIG_DIR_NAME}/agents, set agentScope: "both" (or "project").`,

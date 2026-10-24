@@ -70,13 +70,16 @@ export class TaskManager {
 	private tasks = new Map<string, TaskRecord>();
 	private disposed = false;
 	private notify: (snapshot: TaskSnapshot, event: TaskEvent) => void;
+	private stateChanged: () => void;
 	private createRpc: (options: RpcOptions) => RpcProcess;
 	constructor(
 		notify: (snapshot: TaskSnapshot, event: TaskEvent) => void,
 		createRpc: (options: RpcOptions) => RpcProcess = (options) => new RpcProcess(options),
+		stateChanged: () => void = () => {},
 	) {
 		this.notify = notify;
 		this.createRpc = createRpc;
+		this.stateChanged = stateChanged;
 	}
 
 	start(input: StartTask): TaskSnapshot {
@@ -122,6 +125,7 @@ export class TaskManager {
 			resolveDone: () => resolveDone(),
 		};
 		this.tasks.set(id, task);
+		this.stateChanged();
 		task.launchDone = (async () => {
 			try {
 				const launch = await input.launch(id);
@@ -189,6 +193,7 @@ export class TaskManager {
 		if (task.snapshot.events.length > 16) task.snapshot.events.shift();
 		if (kind === "progress" || kind === "blocked" || kind === "decision")
 			task.snapshot.latest_progress = event;
+		this.stateChanged();
 		for (const listener of task.listeners) listener();
 		// Bound automatic context growth, while keeping subsequent reports queryable.
 		if (
@@ -353,6 +358,7 @@ export class TaskManager {
 							disposition: response.data?.disposition ?? "accepted",
 							at: new Date().toISOString(),
 						};
+						this.stateChanged();
 					}
 				},
 			);
@@ -418,5 +424,6 @@ export class TaskManager {
 			),
 		);
 		this.tasks.clear();
+		this.stateChanged();
 	}
 }
