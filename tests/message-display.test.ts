@@ -58,7 +58,7 @@ test("message-display: ccstyle on 时三个组件渲染为工具调用风格", (
 	const skill = makeSkillBlock();
 	const skillCollapsed = stripAnsi(skill.render(120).join("\n"));
 	assert.match(skillCollapsed, /✓ Skill ponytail/);
-	assert.match(skillCollapsed, /to show more/);
+	assert.match(skillCollapsed, /Expand/);
 	assert.doesNotMatch(skillCollapsed, /\[skill\]/);
 	// 与单 tool 一致：Box paddingY 置 0，折叠行无上下空行
 	assert.equal(skill.render(120).length, 1, "折叠行不应有上下空行");

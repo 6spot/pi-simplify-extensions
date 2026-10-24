@@ -214,7 +214,7 @@ test("ExpandedToolIoView wraps Input/Output at 80% of the viewport", () => {
 	assert.ok(!lines.find((line) => line.includes("Output"))?.includes(SHOW_MORE_LABEL));
 });
 
-test("ExpandedToolIoView shows click to show more when Input/Output exceed the line cap", () => {
+test("ExpandedToolIoView shows Expand when Input/Output exceed the line cap", () => {
 	const theme = {
 		fg(color: string, text: string) {
 			if (color === "text") return `\x1b[37m${text}\x1b[39m`;
@@ -247,10 +247,10 @@ test("ExpandedToolIoView shows click to show more when Input/Output exceed the l
 		.render(80)
 		.find((line) => !line.includes("│") && line.includes("more lines"));
 	assert.ok(
-		hoveredInput?.includes(`\x1b[90m ·\x1b[39m\x1b[37m click to show more\x1b[39m`),
+		hoveredInput?.includes(`\x1b[90m ·\x1b[39m\x1b[37m Expand\x1b[39m`),
 		"hover keeps the bullet dim and highlights only the text",
 	);
-	assert.ok(hoveredOutput?.includes(`\x1b[90m ·\x1b[39m\x1b[90m click to show more\x1b[39m`));
+	assert.ok(hoveredOutput?.includes(`\x1b[90m ·\x1b[39m\x1b[90m Expand\x1b[39m`));
 });
 
 test("ExpandedToolIoView records exact show-more header rows, not body text", () => {

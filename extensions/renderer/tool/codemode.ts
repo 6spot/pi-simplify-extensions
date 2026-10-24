@@ -410,7 +410,9 @@ export function createCodemodeResultComponent(options: {
 		},
 		invalidate(): void {},
 		isCollapsedHintLine(plainLine: string): boolean {
-			return !running && /(click to show more|to show more)\s*$/.test(stripAnsi(plainLine));
+			return (
+				!running && /(click to show more|to show more| · Expand)\s*$/.test(stripAnsi(plainLine))
+			);
 		},
 	};
 }

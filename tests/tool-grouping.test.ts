@@ -66,10 +66,7 @@ test("mixed tools group across three empty separators while edit/write and conte
 		const collapsed = renderedGroup
 			.map((line: string) => line.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, ""))
 			.filter((line: string) => line.trim());
-		assert.match(
-			collapsed[0],
-			/^ ○ Multiple Tools: 3 running · Read×1, Bash×1, Grep×1 · click to show more$/,
-		);
+		assert.match(collapsed[0], /^ ○ Multiple Tools: 3 running · Read×1, Bash×1, Grep×1 · Expand$/);
 		assert.equal(collapsed.filter((line: string) => line.trim()).length, 4);
 		assert.match(collapsed[1], /^ ├ ○ Read /);
 		assert.match(collapsed[2], /^ ├ ○ Bash /);
@@ -286,7 +283,7 @@ test("external task, skill, and plan tools keep reference summaries in groups", 
 			.filter((line: string) => line.trim());
 		assert.match(
 			agentLines[0],
-			/^ ● Multiple Tools: 2 done · Agent×1, Get Subagent Result×1 · click to show more$/,
+			/^ ● Multiple Tools: 2 done · Agent×1, Get Subagent Result×1 · Expand$/,
 		);
 		assert.equal(agentLines[1], " ├ ✓ Agent 再次测试 tool 调用");
 		assert.equal(agentLines[2], " └ ✓ Get Subagent Result 6a559462-95d0-40b");
@@ -325,7 +322,7 @@ test("group status and tool labels use the injected active theme", () => {
 		const hovered = group.render(200).join("\n");
 		assert.match(
 			hovered,
-			/<dim>·<\/dim> <text>click to show more<\/text>/,
+			/<dim>·<\/dim> <text>Expand<\/text>/,
 			"hover highlights text without highlighting the dot",
 		);
 		assert.doesNotMatch(hovered, /<text>·/);
@@ -349,7 +346,7 @@ test("outer removeChild removes grouped tools, dissolves singletons, and clear f
 		parent.addChild(grep);
 		const group = parent.children[0] as ToolGroupComponent;
 		assert.ok(group instanceof ToolGroupComponent);
-		assert.match(group.render(100).find((line: string) => line.trim())!, /click to show more/);
+		assert.match(group.render(100).find((line: string) => line.trim())!, /Expand/);
 
 		parent.removeChild(bash);
 		assert.deepEqual(group.children, [read, grep]);
@@ -667,7 +664,7 @@ test("组头列表用人性化名并恒带次数；组内 shell 行只报耗时"
 		parent.addChild(ps);
 		const rows = plain((parent.children[0] as ToolGroupComponent).render(140));
 		// 单组标题用 toolTitle，列表跟子行同一套写法；各跑一次也报 ×1。
-		assert.equal(rows[0], " ● Multiple Tools: 2 done · Bash×1, PowerShell×1 · click to show more");
+		assert.equal(rows[0], " ● Multiple Tools: 2 done · Bash×1, PowerShell×1 · Expand");
 		// 只报耗时：行数在折叠卡里冗余，展开就能看到。
 		assert.equal(rows[1], " ├ ✓ Bash npm test · 12.4s");
 		assert.equal(rows[2], " └ ✓ PowerShell Get-ChildItem · 300ms");
@@ -702,7 +699,7 @@ test("组头列表用人性化名并恒带次数；组内 shell 行只报耗时"
 
 		// 窄宽度下先让出工具列表，保住行尾展开提示（鼠标层的命中锚点）。
 		const narrow = plain((parent.children[0] as ToolGroupComponent).render(72));
-		assert.match(narrow[0]!, /· click to show more$/);
+		assert.match(narrow[0]!, /· Expand$/);
 		assert.ok(narrow[0]!.length <= Math.floor(72 * 0.8));
 	} finally {
 		hooks.shutdown();

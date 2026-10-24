@@ -15,8 +15,8 @@ test("separately loaded renderers follow the active TUI mode and retain shortcut
 		assert.match(isolated.showMoreHintText(), /to show more/);
 		assert.doesNotMatch(isolated.showMoreHintText(), /click/);
 		tui.mode = "fullscreen";
-		assert.equal(isolated.showMoreHintText(), "click to show more");
-		assert.equal(isolated.collapseHintText(), "↑ Collapse");
+		assert.equal(isolated.showMoreHintText(), "Expand");
+		assert.equal(isolated.collapseHintText(), "Collapse");
 		patchRegistry.dispose(TOOL_MOUSE_TUI_SLOT, tui);
 		assert.doesNotMatch(isolated.expansionHintText(false), /click/);
 		assert.doesNotMatch(hints.expansionHintText(false), /click/);

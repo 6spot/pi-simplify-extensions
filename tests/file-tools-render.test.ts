@@ -172,16 +172,16 @@ test("file panels preview arguments, stream output without accepting counts earl
 		search.markExecutionStarted();
 		assert.match(render(search), /Searching…/);
 		search.updateResult(output("a.ts:2: needle"), true);
-		assert.match(render(search), /○ Grep · [^\n]*to show more/);
-		assert.equal(render(search).match(/to show more/g)?.length, 1);
+		assert.match(render(search), /○ Grep · [^\n]*Expand/);
+		assert.equal(render(search).match(/Expand/g)?.length, 1);
 		assert.doesNotMatch(render(search), /1 match/);
 		assert.match(render(search), /a.ts:2: needle/);
 		search.updateResult(output("No matches found"));
-		assert.match(render(search), /✓ Grep · No matches · [^\n]*to show more/);
+		assert.match(render(search), /✓ Grep · No matches · [^\n]*Expand/);
 		assert.doesNotMatch(render(search), /a.ts:2: needle|1 line/);
 		assert.equal(search.render(110), search.render(110), "settled renders reuse cache");
 		search.updateResult(output("Operation aborted", { isError: true }));
-		assert.match(render(search), /✗ Grep · [^\n]*to show more/);
+		assert.match(render(search), /✗ Grep · [^\n]*Expand/);
 		assert.match(render(search), /Operation aborted/);
 		assert.doesNotMatch(render(search), /No matches|✓ Grep/);
 		const read = tool("read", { path: "src/a.ts", offset: 10, limit: 2 });
@@ -189,8 +189,8 @@ test("file panels preview arguments, stream output without accepting counts earl
 		assert.match(render(read), /offset=10 · limit=2/);
 		assert.match(render(read), /Reading…/);
 		read.updateResult(output("a\nb\n\n[9 more lines in file. Use offset=12 to continue.]"));
-		assert.match(render(read), /✓ Read · lines 10–11 · [^\n]*to show more/);
-		assert.equal(render(read).match(/to show more/g)?.length, 1);
+		assert.match(render(read), /✓ Read · lines 10–11 · [^\n]*Expand/);
+		assert.equal(render(read).match(/Expand/g)?.length, 1);
 		assert.match(render(read), /More available · offset=12/);
 		assert.doesNotMatch(render(read), /offset=10|lines loaded/);
 		const metadataError = tool("read", { path: "unavailable.ts" });
@@ -201,7 +201,7 @@ test("file panels preview arguments, stream output without accepting counts earl
 		});
 		assert.match(render(metadataError), /ACTUAL_METADATA_ERROR/);
 		metadataError.setExpanded(true);
-		assert.match(render(metadataError), /✗ Read · ↑ Collapse/);
+		assert.match(render(metadataError), /✗ Read · Collapse/);
 		assert.match(render(metadataError), /ACTUAL_METADATA_ERROR/);
 		assert.ok(!slots.includes("toolPendingBg"), "collapsed file panels are transparent");
 		assert.ok(slots.includes("toolErrorBg"));
@@ -219,7 +219,7 @@ test("file panels expand full available input/output, preserve controls safely, 
 			pattern: `${"long_pattern_".repeat(20)}UNIQUE_QUERY_TAIL`,
 			path: "src",
 		});
-		assert.match(render(incoming, 40), /○ Grep · [^\n]*to show more/);
+		assert.match(render(incoming, 40), /○ Grep · [^\n]*Expand/);
 		assert.doesNotMatch(render(incoming, 40), /UNIQUE_QUERY_TAIL/);
 		incoming.setExpanded(true);
 		assert.ok(render(incoming, 40).replace(/\s/g, "").includes("UNIQUE_QUERY_TAIL"));
@@ -240,13 +240,13 @@ test("file panels expand full available input/output, preserve controls safely, 
 			component.updateResult(result);
 			assert.match(
 				render(component),
-				new RegExp(`✓ ${name[0].toUpperCase()}${name.slice(1)}[^\\n]* · [^\\n]*to show more`),
+				new RegExp(`✓ ${name[0].toUpperCase()}${name.slice(1)}[^\\n]* · [^\\n]*Expand`),
 			);
-			assert.equal(render(component).match(/to show more/g)?.length, 1);
+			assert.equal(render(component).match(/Expand/g)?.length, 1);
 			assert.doesNotMatch(render(component), /value_79|中文🧪_79/);
 			component.setExpanded(true);
 			const expanded = render(component);
-			assert.match(expanded, / · ↑ Collapse/);
+			assert.match(expanded, / · Collapse/);
 			assert.match(expanded, /Input/);
 			assert.match(expanded, /Output/);
 			assert.match(expanded, name === "find" ? /中文🧪_79/ : /value_79/);

@@ -53,18 +53,18 @@ test("finished notices preserve previews, native keyboard expansion and local mo
 	const data = message([notice()]);
 	const original = structuredClone(data);
 	let component = view(data);
-	assert.match(text(component), /scout · 检查中文通知 🧪 · completed · 34.8s · click to show more/);
+	assert.match(text(component), /scout · 检查中文通知 🧪 · completed · 34.8s · Expand/);
 	assert.match(text(component), /Result: 结果第一行/);
 	assert.doesNotMatch(text(component), /full-task-id|FULL_RESULT_END/);
 	assert.ok(isMessageDisplayComponent(component));
 	assert.ok(component.isCollapsedHintLine(component.render(110)[0]));
-	assert.equal(component.isCollapsedHintLine("Result: click to show more"), false);
+	assert.equal(component.isCollapsedHintLine("Result: Expand"), false);
 	component.setExpanded(true);
 	assert.match(text(component), /FULL_RESULT_END/);
 	assert.match(text(component), /├ Task[\s\S]*保留第二行任务[\s\S]*├ ID[\s\S]*full-task-id/);
 	component = view(data); // CustomMessageComponent.invalidate() reconstructs the renderer.
 	assert.equal(component.expanded, true);
-	assert.match(text(component), /↑ Collapse/);
+	assert.match(text(component), /Collapse/);
 	view(data, true); // Native Ctrl+O expands all.
 	component = view(data, false); // A following Ctrl+O collapses all.
 	assert.equal(component.expanded, false);
@@ -104,7 +104,7 @@ test("same-batch terminal trees retain failures and cancellation reasons, with f
 		text(component),
 		/├ ✓ scout[\s\S]*├ ✗ worker[\s\S]*Error: ACTUAL_ERROR[\s\S]*└ – reviewer[\s\S]*Cancelled: USER_CANCELLED/,
 	);
-	assert.equal((text(component).match(/click to show more/g) ?? []).length, 1);
+	assert.equal((text(component).match(/Expand/g) ?? []).length, 1);
 	assert.doesNotMatch(text(component), /FULL_RESULT_END|ERROR_END|PARTIAL_RESULT/);
 	for (const expanded of [false, true]) {
 		component.setExpanded(expanded);

@@ -85,7 +85,7 @@ test("异常数据不崩：calls 非数组、元素为 null、args 非字符串"
 	assert.deepEqual(codemodeCalls(messy), []);
 	assert.deepEqual(
 		codemodeCollapsedLines({ result: messy, theme, running: false, isError: false, width: 100 }),
-		[" Done · click to show more"],
+		[" Done · Expand"],
 	);
 
 	const withNulls = result({}, [null, { name: "read" }, call({ args: 42 })]);
@@ -100,7 +100,7 @@ test("异常数据不崩：calls 非数组、元素为 null、args 非字符串"
 	assert.match(lines[0]!, /^ {1}├ \S Tool$/);
 	assert.match(lines[1]!, /^ {1}├ \S Read$/);
 	assert.match(lines[2]!, /^ {1}├ \S Ffgrep 31ms$/);
-	assert.equal(lines[3], " └ 3 calls · 2 lines output · click to show more");
+	assert.equal(lines[3], " └ 3 calls · 2 lines output · Expand");
 });
 
 test("折叠态：子调用全用 ├，最后一行用 └ 收汇总", () => {
@@ -113,7 +113,7 @@ test("折叠态：子调用全用 ├，最后一行用 └ 收汇总", () => {
 	});
 	assert.deepEqual(lines, [
 		' ├ ✓ Ffgrep "mcp" in src/ 31ms',
-		" └ 1 call · 2 lines output · click to show more",
+		" └ 1 call · 2 lines output · Expand",
 	]);
 });
 
@@ -153,7 +153,7 @@ test("折叠态：子调用过多时只列最近 8 条", () => {
 	assert.equal(lines[0], " ├ … 3 earlier calls");
 	assert.equal(lines.length, 10);
 	assert.match(lines[1]!, /^ {1}├ ✓ Read src\/f4\.ts 8ms$/);
-	assert.equal(lines[9], " └ 11 calls · 2 lines output · click to show more");
+	assert.equal(lines[9], " └ 11 calls · 2 lines output · Expand");
 });
 
 test("折叠态：没有子调用时补一行代码摘要，汇总用 └ 收尾", () => {
@@ -170,7 +170,7 @@ test("折叠态：没有子调用时补一行代码摘要，汇总用 └ 收尾
 	assert.equal(plain(lines[0]!), " │ const rows = scan()");
 	assert.equal(plain(lines[1]!), " │ const hits = grep(rows)");
 	assert.equal(plain(lines[2]!), " │ return write(hits)");
-	assert.equal(lines[3], " └ 2 lines output · click to show more");
+	assert.equal(lines[3], " └ 2 lines output · Expand");
 });
 
 test("折叠态：没有子调用也没有脚本时不画衔接符", () => {
@@ -181,7 +181,7 @@ test("折叠态：没有子调用也没有脚本时不画衔接符", () => {
 		isError: true,
 		width: 100,
 	});
-	assert.deepEqual(lines, [" 2 lines output · click to show more"]);
+	assert.deepEqual(lines, [" 2 lines output · Expand"]);
 });
 
 test("代码摘要：取信息量最大的一行语句，跳过注释与选项行", () => {
@@ -270,9 +270,9 @@ test("汇总片段：宽度不够时从尾部丢，不断词", () => {
 		theme,
 		running: false,
 		isError: true,
-		width: 60,
+		width: 48,
 	});
-	assert.equal(lines.at(-1), " └ 2 calls · 1 failed · click to show more");
+	assert.equal(lines.at(-1), " └ 2 calls · 1 failed · Expand");
 });
 
 test("展开正文：全部子调用（含错误）+ 去头输出 + 全量输出路径", () => {
@@ -340,10 +340,7 @@ test("折叠组件：只有汇总行是展开入口，运行中不可展开", ()
 		running: true,
 		isError: false,
 	});
-	assert.equal(
-		running.isCollapsedHintLine(" └ 1 call · 2 lines output · click to show more"),
-		false,
-	);
+	assert.equal(running.isCollapsedHintLine(" └ 1 call · 2 lines output · Expand"), false);
 
 	const done = createCodemodeResultComponent({
 		result: result(),
@@ -351,11 +348,11 @@ test("折叠组件：只有汇总行是展开入口，运行中不可展开", ()
 		running: false,
 		isError: false,
 	});
-	assert.equal(done.isCollapsedHintLine(" └ 1 call · 2 lines output · click to show more"), true);
+	assert.equal(done.isCollapsedHintLine(" └ 1 call · 2 lines output · Expand"), true);
 	assert.equal(done.isCollapsedHintLine(' ├ ✓ Ffgrep "mcp" in src/ 31ms'), false);
 	assert.deepEqual(done.render(100), [
 		' ├ ✓ Ffgrep "mcp" in src/ 31ms',
-		" └ 1 call · 2 lines output · click to show more",
+		" └ 1 call · 2 lines output · Expand",
 	]);
 });
 
@@ -364,13 +361,10 @@ test("折叠态：hover 只高亮提示文字，圆点保持 dim（与其它折�
 	// 带标签的 theme 桩里标签算可见宽度，给足宽度免得被截断
 	const base = { result: result(), theme: tagged, running: false, isError: false, width: 140 };
 	// truncateToWidth 会在行尾补 ANSI reset，断言不锚尾
-	assert.match(
-		codemodeCollapsedLines(base).at(-1)!,
-		/<dim>·<\/dim> <dim>click to show more<\/dim>/,
-	);
+	assert.match(codemodeCollapsedLines(base).at(-1)!, /<dim>·<\/dim> <dim>Expand<\/dim>/);
 	assert.match(
 		codemodeCollapsedLines({ ...base, hovered: true }).at(-1)!,
-		/<dim>·<\/dim> <text>click to show more<\/text>/,
+		/<dim>·<\/dim> <text>Expand<\/text>/,
 	);
 
 	// 组件在 render() 内取 hover，跟着鼠标 motion 的 requestRender 走
@@ -382,9 +376,9 @@ test("折叠态：hover 只高亮提示文字，圆点保持 dim（与其它折�
 		isError: false,
 		isHovered: () => hovered,
 	});
-	assert.match(component.render(100).at(-1)!, /<dim>·<\/dim> <dim>click/);
+	assert.match(component.render(100).at(-1)!, /<dim>·<\/dim> <dim>Expand/);
 	hovered = true;
-	assert.match(component.render(100).at(-1)!, /<dim>·<\/dim> <text>click/);
+	assert.match(component.render(100).at(-1)!, /<dim>·<\/dim> <text>Expand/);
 });
 
 test("折叠态：耗时/费用沿用官方格式（空格相连）", () => {

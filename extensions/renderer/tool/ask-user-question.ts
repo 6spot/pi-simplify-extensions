@@ -167,7 +167,7 @@ export function createAskUserResultComponent(options: {
 		},
 		invalidate(): void {},
 		isCollapsedHintLine(plainLine: string): boolean {
-			return /(click to show more|to show more)\s*$/.test(stripAnsi(plainLine));
+			return /(click to show more|to show more| · Expand)\s*$/.test(stripAnsi(plainLine));
 		},
 	};
 }

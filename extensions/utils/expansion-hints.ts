@@ -33,10 +33,10 @@ export function expandShortcutText(): string {
 		.join("/");
 }
 export function showMoreHintText(): string {
-	return isToolTuiFullscreen() ? "click to show more" : `${expandShortcutText()} to show more`;
+	return isToolTuiFullscreen() ? "Expand" : `${expandShortcutText()} to show more`;
 }
 export function collapseHintText(): string {
-	return isToolTuiFullscreen() ? "↑ Collapse" : `${expandShortcutText()} to collapse`;
+	return isToolTuiFullscreen() ? "Collapse" : `${expandShortcutText()} to collapse`;
 }
 
 /** Independently loaded views use native shortcuts until mouse routing is installed. */

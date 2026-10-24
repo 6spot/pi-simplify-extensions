@@ -341,7 +341,7 @@ function isCollapsedHintRow(component: any, finalLine: string, localRow?: number
 	const result = component?.resultRendererComponent ?? component;
 	if (typeof result?.isCollapsedHintLine === "function")
 		return result.isCollapsedHintLine(finalLine, localRow);
-	return /(?:\((?:[^()\n]* \/ (?:click|to expand)|[^()\n]*, (?:[\w/+]+\s+)?to (?:expand|show more))\)|click to show more|to show more)\s*$/.test(
+	return /(?:\((?:[^()\n]* \/ (?:click|to expand)|[^()\n]*, (?:[\w/+]+\s+)?to (?:expand|show more))\)|click to show more|to show more| · Expand)\s*$/.test(
 		stripTerminalSequences(finalLine),
 	);
 }

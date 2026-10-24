@@ -146,7 +146,7 @@ test("streamed plan arguments appear before results without claiming accepted co
 	try {
 		const tool = nativeTool("update_plan", {});
 		assert.match(render(tool), /Receiving plan…/);
-		assert.doesNotMatch(render(tool), /done|✓|click to show more/);
+		assert.doesNotMatch(render(tool), /done|✓|Expand/);
 		tool.updateArgs({
 			steps: [
 				{ id: "one", goal: "收到的预览步骤", status: "completed" },
@@ -156,7 +156,7 @@ test("streamed plan arguments appear before results without claiming accepted co
 		});
 		assert.match(render(tool), /· 收到的预览步骤/);
 		assert.match(render(tool), /· 接收中的步骤/);
-		assert.doesNotMatch(render(tool), /done|✓|click to show more/);
+		assert.doesNotMatch(render(tool), /done|✓|Expand/);
 		tool.markExecutionStarted();
 		tool.updateResult({ content: [] }, true);
 		assert.match(render(tool), /· 收到的预览步骤/);
@@ -212,17 +212,15 @@ test("standalone plan is transparent until expanded; partial/completed updates, 
 		for (const goal of steps().map((step) => step.goal)) assert.ok(collapsed.includes(goal));
 		assert.doesNotMatch(collapsed, /sol-pi-plan|"progress"|"steps"|lines returned|Decisions/);
 		assert.equal(slots.length, 0, "collapsed plans have no background");
-		const hintLines = collapsed
-			.split("\n")
-			.filter((line: string) => line.includes("click to show more"));
+		const hintLines = collapsed.split("\n").filter((line: string) => line.includes("Expand"));
 		assert.equal(hintLines.length, 1);
-		assert.match(hintLines[0], /Update Plan 1\/3 done · click to show more/);
+		assert.match(hintLines[0], /Update Plan 1\/3 done · Expand/);
 		tool.setExpanded(true);
 		assert.match(
 			render(tool)
 				.split("\n")
 				.find((line: string) => line.includes("Update Plan"))!,
-			/↑ Collapse/,
+			/Collapse/,
 		);
 		assert.ok(slots.includes("toolPendingBg"));
 		assert.ok(!slots.includes("toolSuccessBg"));

@@ -71,8 +71,7 @@ test("Subagent native cards stay nonempty while running, expand structurally and
 				component.setExpanded(expanded);
 				assert.match(render(), /reader · 检查中文路径/);
 				assert.equal(
-					(render().match(/click to show more|↑ Collapse|ctrl\+o to (?:show more|collapse)/g) ?? [])
-						.length,
+					(render().match(/Expand|Collapse|ctrl\+o to (?:show more|collapse)/g) ?? []).length,
 					1,
 				);
 			}

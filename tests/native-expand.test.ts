@@ -58,10 +58,19 @@ test("native expansion hints retain exact Unicode/ANSI hit columns and reject no
 			endCol: visibleWidth(prefix + hint),
 		});
 	}
+	for (const hint of ["Expand", "Collapse"]) {
+		const prefix = "✓ 中文 🧪 · ";
+		assert.deepEqual(collapsedHintHitbox(`\x1b[36m${prefix}${hint}\x1b[0m`), {
+			startCol: visibleWidth(prefix) + 1,
+			endCol: visibleWidth(prefix + hint),
+		});
+	}
 	for (const line of [
 		"(not an expand hint)",
 		"(30 more lines, ctrl+o to expand) trailing text",
 		"the words to expand appear in source",
+		"function Expand",
+		"const Collapse",
 		"... 20 lines",
 	])
 		assert.equal(collapsedHintHitbox(line), null);
@@ -76,6 +85,11 @@ test("legacy TUI frames expand native ASCII truncation rows and active plan titl
 		"○ Bash · 1.2s · click to show more",
 		"✗ Grep · click to show more",
 		"✓ Find · 3 paths · click to show more",
+		"○ Update Plan 1/3 done · Expand",
+		"✓ Read · lines 82–133 · Expand",
+		"○ Bash · 1.2s · Expand",
+		"✗ Grep · Expand",
+		"✓ Find · 3 paths · Expand",
 	]) {
 		const tool: any = {
 			toolName: "native",
@@ -95,7 +109,12 @@ test("legacy TUI frames expand native ASCII truncation rows and active plan titl
 			tui.handleInput("\x1b[<0;2;1M");
 			tui.handleInput("\x1b[<0;2;1m");
 			assert.equal(tool.expanded, false, "summary prefix is not an expand button");
-			const column = row.indexOf(row.includes("to expand") ? "to expand" : "to show more") + 1;
+			const label = row.endsWith("Expand")
+				? "Expand"
+				: row.includes("to expand")
+					? "to expand"
+					: "to show more";
+			const column = row.indexOf(label) + 1;
 			tui.handleInput(`\x1b[<0;${column};1M`);
 			tui.handleInput(`\x1b[<0;${column};1m`);
 			assert.equal(tool.expanded, true, row);

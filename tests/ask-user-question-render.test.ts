@@ -80,10 +80,10 @@ test("折叠树：问题行用 ├，展开提示挂在单独的 └ 汇总行",
 	assert.match(lines[0]!, /├ Which library should we use\? -> Read$/);
 	assert.match(lines[1]!, /├ Which paths should the change cover\? -> src and tests$/);
 	assert.match(lines[2]!, /├ Which checks should run\? -> typecheck, unit tests, lint$/);
-	assert.match(lines[3]!, /└ 3 answered · .*to show more$/);
+	assert.match(lines[3]!, /└ 3 answered · .*Expand$/);
 	// 展开提示不在任何问题行上
-	assert.doesNotMatch(lines[0]!, /to show more/);
-	assert.doesNotMatch(lines[2]!, /to show more/);
+	assert.doesNotMatch(lines[0]!, /Expand/);
+	assert.doesNotMatch(lines[2]!, /Expand/);
 });
 
 test("折叠树按问题下标排序，与 answers 数组顺序无关", () => {

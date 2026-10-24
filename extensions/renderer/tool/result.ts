@@ -146,7 +146,7 @@ export function formatToolDuration(ms: number): string {
 	return `${Math.floor(minutes / 60)}h ${minutes % 60}m ${remainder}s`;
 }
 /** 截断体末行 `… N more lines` 旁的展开提示，点击打开全量预览。 */
-export const SHOW_MORE_LABEL = "· click to show more";
+export const SHOW_MORE_LABEL = "· Expand";
 
 /** 折叠结果行：`   ↳ <body>`。 */
 export function renderCollapsedToolResult(body: string, collapsedHint = ""): string {
