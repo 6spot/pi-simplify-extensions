@@ -98,7 +98,6 @@ export function createPlanPreviewComponent(options: {
 	return createPlanResultComponent({
 		...options,
 		plan: { steps, advice: [] },
-		hint: "",
 		preview: true,
 	});
 }
@@ -108,8 +107,6 @@ export function createPlanResultComponent(options: {
 	args: any;
 	theme: any;
 	expanded: boolean;
-	hint: string;
-	isHovered?: () => boolean;
 	isGrouped?: () => boolean;
 	preview?: boolean;
 }): Component {
@@ -158,8 +155,6 @@ export function createPlanResultComponent(options: {
 					for (const value of values) item("  · ", value, color);
 				}
 			}
-			if (!options.preview && !options.isGrouped?.())
-				lines.push(fg(options.isHovered?.() ? "text" : "dim", options.hint));
 			return lines.map((line) => truncateToWidth(line, width));
 		},
 	};

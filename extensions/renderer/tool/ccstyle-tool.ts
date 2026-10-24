@@ -292,8 +292,16 @@ export function createCcstyleTool(
 						// 路径按最终可用宽度中间截断，避免整行二次截断隐藏文件名。
 						cachedLine = `${lead}${icon} ${renderToolSummary(summary, mainWidth, theme.fg.bind(theme))}${extraStyled}`;
 					}
+					const planHint =
+						toolName === "update_plan" && !context?.isGrouped?.() && planFromResult(context?.result)
+							? ` · ${expanded ? collapseHintText() : showMoreHintText()}`
+							: "";
+					const header = planHint
+						? truncateToWidth(cachedLine, Math.max(0, viewportWidth - visibleWidth(planHint)), "") +
+							theme.fg(isToolCallHovered(context?.toolCallId) ? "text" : "dim", planHint)
+						: cachedLine;
 					return [
-						truncateToWidth(cachedLine, viewportWidth, ""),
+						truncateToWidth(header, viewportWidth, ""),
 						...(preview?.render(viewportWidth) ?? []),
 					];
 				},
@@ -316,8 +324,6 @@ export function createCcstyleTool(
 						args: context?.args,
 						theme,
 						expanded,
-						hint: expanded ? collapseHintText() : showMoreHintText(),
-						isHovered: () => isToolCallHovered(context?.toolCallId),
 						isGrouped: context?.isGrouped,
 					});
 				}

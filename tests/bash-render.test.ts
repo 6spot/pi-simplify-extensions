@@ -75,6 +75,9 @@ test("Bash streams a real output tail and replaces it with the final result, kee
 		);
 		assert.match(render(tool), /✗ Bash · exit 7 · 1\.5s/);
 		assert.doesNotMatch(render(tool), /✓ Bash|exit 0|\(no output\)/);
+		assert.equal(slots.length, 0, "collapsed Bash including errors is transparent");
+		tool.setExpanded(true);
+		render(tool);
 		assert.ok(slots.includes("toolErrorBg"));
 		assert.equal(
 			partial.content[0].text,

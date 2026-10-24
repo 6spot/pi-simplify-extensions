@@ -367,7 +367,7 @@ function deactivateGlobalToolRendering(patch: GlobalToolRenderPatch): void {
 	}
 }
 
-/** 展开及独立工具面板按工具状态取中性/错误底色；普通折叠行保持原生状态色。 */
+/** 独立工具面板收起时透明，展开后按真实状态取中性/错误底色；保留原生Box布局。 */
 export function installToolExpandedBackground(): () => void {
 	const previous = patchRegistry.get<ToolExpandedBackgroundPatch>(TOOL_EXPANDED_BACKGROUND_PATCH);
 	if (previous) previous.dispose();
@@ -392,7 +392,7 @@ export function installToolExpandedBackground(): () => void {
 				box.paddingY = 1;
 				if (box.setBgFn) {
 					const slot = toolCardBgSlot(this);
-					box.setBgFn((text: string) => theme.bg(slot, text));
+					box.setBgFn(this.expanded ? (text: string) => theme.bg(slot, text) : undefined);
 				}
 			}
 		},

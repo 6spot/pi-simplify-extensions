@@ -183,7 +183,7 @@ test("streamed plan arguments appear before results without claiming accepted co
 	}
 });
 
-test("standalone plan is a neutral native panel; partial/completed updates, expansion, errors and original data remain accurate", () => {
+test("standalone plan is transparent until expanded; partial/completed updates, expansion, errors and original data remain accurate", () => {
 	const slots: string[] = [];
 	setMessageDisplayTheme({
 		...theme,
@@ -211,13 +211,21 @@ test("standalone plan is a neutral native panel; partial/completed updates, expa
 		assert.match(collapsed, /○ Update Plan 1\/3 done/);
 		for (const goal of steps().map((step) => step.goal)) assert.ok(collapsed.includes(goal));
 		assert.doesNotMatch(collapsed, /sol-pi-plan|"progress"|"steps"|lines returned|Decisions/);
-		assert.match(collapsed, /click to show more/);
-		assert.ok(slots.includes("toolPendingBg"));
-		assert.ok(
-			!slots.includes("toolSuccessBg"),
-			"successful plan remains on the neutral card surface",
-		);
+		assert.equal(slots.length, 0, "collapsed plans have no background");
+		const hintLines = collapsed
+			.split("\n")
+			.filter((line: string) => line.includes("click to show more"));
+		assert.equal(hintLines.length, 1);
+		assert.match(hintLines[0], /Update Plan 1\/3 done · click to show more/);
 		tool.setExpanded(true);
+		assert.match(
+			render(tool)
+				.split("\n")
+				.find((line: string) => line.includes("Update Plan"))!,
+			/↑ Collapse/,
+		);
+		assert.ok(slots.includes("toolPendingBg"));
+		assert.ok(!slots.includes("toolSuccessBg"));
 		assert.match(render(tool), /Decisions[\s\S]*原始决策保留/);
 		assert.match(render(tool), /Changed files[\s\S]*src\/计划.ts/);
 		assert.match(render(tool), /Validation[\s\S]*Typecheck passed/);
@@ -325,7 +333,6 @@ test("long plans focus the active step; expansion preserves full text, advice an
 		args: args(),
 		theme,
 		expanded: false,
-		hint: "click to show more",
 	});
 	assert.match(render(collapsed), /步骤 10/);
 	assert.match(render(collapsed), /8 earlier steps/);
@@ -336,7 +343,6 @@ test("long plans focus the active step; expansion preserves full text, advice an
 		args: args(),
 		theme,
 		expanded: true,
-		hint: "↑ Collapse",
 	});
 	const full = render(expanded);
 	assert.match(full, /步骤 0/);
@@ -358,4 +364,64 @@ test("long plans focus the active step; expansion preserves full text, advice an
 	for (const component of [collapsed, expanded, previewCollapsed, preview])
 		for (const width of [8, 22, 50])
 			for (const line of component.render(width)) assert.ok(visibleWidth(line) <= width);
+});
+
+test("new tool cards clear backgrounds again after expansion across pending, success, error and cached repaints", () => {
+	const slots: string[] = [];
+	setMessageDisplayTheme({
+		...theme,
+		bg: (slot: string, text: string) => {
+			slots.push(slot);
+			return text;
+		},
+	});
+	const hooks = installDefaultMode(new WriteExecutionMetadataStore());
+	const background = installToolExpandedBackground();
+	try {
+		for (const name of ["update_plan", "bash", "grep", "find", "read"]) {
+			const tool = nativeTool(
+				name,
+				name === "update_plan"
+					? args()
+					: { path: "src/a.ts", pattern: "needle", command: "printf needle" },
+				`transparent-${name}`,
+			);
+			tool.markExecutionStarted();
+			slots.length = 0;
+			render(tool);
+			assert.equal(slots.length, 0, `${name}: pending collapsed`);
+			tool.setExpanded(true);
+			render(tool);
+			assert.ok(slots.includes("toolPendingBg"), `${name}: pending expanded`);
+			tool.setExpanded(false);
+			slots.length = 0;
+			render(tool);
+			assert.equal(slots.length, 0, `${name}: pending collapsed again`);
+			tool.updateResult(
+				name === "update_plan"
+					? result()
+					: { content: [{ type: "text", text: "src/a.ts:1: needle" }], isError: false },
+			);
+			render(tool);
+			assert.equal(slots.length, 0, `${name}: settled collapsed`);
+			tool.setExpanded(true);
+			render(tool);
+			assert.ok(slots.includes("toolPendingBg"), `${name}: settled expanded neutral`);
+			tool.updateResult({
+				content: [{ type: "text", text: "Actual execution error" }],
+				isError: true,
+			});
+			assert.match(render(tool), /✗/);
+			assert.ok(slots.includes("toolErrorBg"), `${name}: expanded error`);
+			tool.setExpanded(false);
+			slots.length = 0;
+			assert.match(render(tool), /✗/);
+			assert.equal(slots.length, 0, `${name}: collapsed error`);
+			assert.equal(tool.render(100), tool.render(100), `${name}: settled cache retained`);
+		}
+	} finally {
+		background();
+		hooks.shutdown();
+		setMessageDisplayTheme(undefined);
+	}
 });

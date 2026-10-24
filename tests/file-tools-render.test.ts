@@ -199,7 +199,7 @@ test("file panels preview arguments, stream output without accepting counts earl
 		assert.match(render(metadataError), /ACTUAL_METADATA_ERROR/);
 		metadataError.setExpanded(true);
 		assert.match(render(metadataError), /ACTUAL_METADATA_ERROR/);
-		assert.ok(slots.includes("toolPendingBg"));
+		assert.ok(!slots.includes("toolPendingBg"), "collapsed file panels are transparent");
 		assert.ok(slots.includes("toolErrorBg"));
 	} finally {
 		cleanup();
