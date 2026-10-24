@@ -44,7 +44,12 @@ import {
 	toolIconColor,
 } from "./tool-state.ts";
 import { showMoreHintText, collapseHintText } from "./names.ts";
-import { createPlanResultComponent, planFromResult, planSummary } from "./plan.ts";
+import {
+	createPlanPreviewComponent,
+	createPlanResultComponent,
+	planFromResult,
+	planSummary,
+} from "./plan.ts";
 
 /** `(+A -D)`：plain 用于占宽，styled 用于上屏。default 写标题与 compact edit/write 标题共用。 */
 export function styleChangeCounts(
@@ -191,6 +196,12 @@ export function createCcstyleTool(
 				context.state.ccstyleShellStartedAt = Date.now();
 			}
 
+			if (toolName === "update_plan" && context?.result && context?.isPartial === false) {
+				setToolVisualState(
+					context,
+					context.isError || context.result.isError ? "error" : "success",
+				);
+			}
 			const visualState = resolveToolVisualState(context);
 			const isPending =
 				visualState === "pending" ||
@@ -198,6 +209,11 @@ export function createCcstyleTool(
 			let settledRawIcon = isPending ? "" : settledIcon(toolName, visualState);
 			// Codemode 展开为子调用树，成功容器标题与工具分组统一；子项仍用勾。
 			if (toolName === CODEMODE_TOOL_NAME && visualState === "success") settledRawIcon = "●";
+			const incompletePlan =
+				toolName === "update_plan" &&
+				!isPending &&
+				!context?.isError &&
+				planFromResult(context?.result)?.steps.some((step) => step.status !== "completed");
 			const settledIconStyled = theme.fg(toolIconColor(context), settledRawIcon);
 			// Working 负责全局活动动画；工具行使用静态标记保留进行中状态。
 			const pendingIconStyled = () => theme.fg(toolIconColor(context), pendingIcon(toolName));
@@ -247,22 +263,36 @@ export function createCcstyleTool(
 			let cachedIcon: string | undefined;
 			const expanded = Boolean(context?.expanded);
 			const framed = expanded || toolName === "update_plan";
+			// Pi does not call renderResult before the first result; show streamed steps in the call.
+			const preview =
+				toolName === "update_plan" && !context?.result
+					? createPlanPreviewComponent({ args, theme, expanded })
+					: undefined;
 			return {
 				render(width: number) {
-					const icon = isPending ? pendingIconStyled() : settledIconStyled;
-					if (cachedLine !== undefined && cachedWidth === width && cachedIcon === icon) {
-						return [cachedLine];
-					}
+					const icon = isPending
+						? pendingIconStyled()
+						: incompletePlan && !context?.isGrouped?.()
+							? theme.fg("accent", "○")
+							: settledIconStyled;
 					const viewportWidth = toolViewportWidth(width);
-					// 展开态贴左（外层 Box 已 pad 1）；折叠 self-shell 保留 1 格前导空格
-					const lead = framed ? "" : " ";
-					const callWidth = Math.max(0, viewportWidth - visibleWidth(icon) - 1 - (framed ? 0 : 1));
-					const mainWidth = Math.max(0, callWidth - visibleWidth(extraText));
-					cachedWidth = width;
-					cachedIcon = icon;
-					// 路径按最终可用宽度中间截断，避免整行二次截断隐藏文件名。
-					cachedLine = `${lead}${icon} ${renderToolSummary(summary, mainWidth, theme.fg.bind(theme))}${extraStyled}`;
-					return [truncateToWidth(cachedLine, viewportWidth, "")];
+					if (cachedLine === undefined || cachedWidth !== width || cachedIcon !== icon) {
+						// 展开态贴左（外层 Box 已 pad 1）；折叠 self-shell 保留 1 格前导空格
+						const lead = framed ? "" : " ";
+						const callWidth = Math.max(
+							0,
+							viewportWidth - visibleWidth(icon) - 1 - (framed ? 0 : 1),
+						);
+						const mainWidth = Math.max(0, callWidth - visibleWidth(extraText));
+						cachedWidth = width;
+						cachedIcon = icon;
+						// 路径按最终可用宽度中间截断，避免整行二次截断隐藏文件名。
+						cachedLine = `${lead}${icon} ${renderToolSummary(summary, mainWidth, theme.fg.bind(theme))}${extraStyled}`;
+					}
+					return [
+						truncateToWidth(cachedLine, viewportWidth, ""),
+						...(preview?.render(viewportWidth) ?? []),
+					];
 				},
 				invalidate() {
 					cachedLine = undefined;
@@ -287,6 +317,10 @@ export function createCcstyleTool(
 						isHovered: () => isToolCallHovered(context?.toolCallId),
 						isGrouped: context?.isGrouped,
 					});
+				}
+				if (options?.isPartial) {
+					if (context?.state) context.state.ccstyleIoView = undefined;
+					return createPlanPreviewComponent({ args: context?.args, theme, expanded });
 				}
 			}
 			// codemode：折叠态自己画子调用树，展开态给全部子调用与去掉脚本头的输出

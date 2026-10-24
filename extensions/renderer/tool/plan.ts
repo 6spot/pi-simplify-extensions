@@ -54,14 +54,53 @@ export function planFromResult(result: any): PlanView | undefined {
 	}
 }
 
+/** Incoming arguments are a neutral preview, never an accepted completion count. */
+function previewSteps(args: any): PlanStep[] {
+	if (!Array.isArray(args?.steps)) return [];
+	return args.steps.slice(0, 128).flatMap((step: any, index: number) =>
+		typeof step?.goal === "string" && step.goal.trim()
+			? [
+					{
+						id: String(index),
+						goal: step.goal,
+						status: ["pending", "in_progress", "completed"].includes(step.status)
+							? step.status
+							: "pending",
+					},
+				]
+			: [],
+	);
+}
+
 /** One compact sentence for a group row or standalone heading. */
 export function planSummary(args: any, result?: any, includeCurrent = true): string | undefined {
 	if (result?.isError) return "Update failed";
-	const steps = result ? planFromResult(result)?.steps : planSteps(args?.steps);
+	if (!result) {
+		const preview = previewSteps(args);
+		if (!preview.length) return;
+		const active = preview.find((step) => step.status === "in_progress");
+		return `updating${includeCurrent ? ` · ${oneLine(active?.goal ?? preview[0].goal)}` : ""}`;
+	}
+	const steps = planFromResult(result)?.steps;
 	if (!steps) return;
 	const done = steps.filter((step) => step.status === "completed").length;
 	const active = steps.find((step) => step.status === "in_progress");
 	return `${done}/${steps.length} done${includeCurrent ? (active ? ` · ${oneLine(active.goal)}` : done < steps.length ? " · pending" : "") : ""}`;
+}
+
+export function createPlanPreviewComponent(options: {
+	args: any;
+	theme: any;
+	expanded: boolean;
+}): Component {
+	const steps = previewSteps(options.args);
+	if (!steps.length) return new Text(options.theme.fg("dim", "  Receiving plan…"), 0, 0);
+	return createPlanResultComponent({
+		...options,
+		plan: { steps, advice: [] },
+		hint: "",
+		preview: true,
+	});
 }
 
 export function createPlanResultComponent(options: {
@@ -72,6 +111,7 @@ export function createPlanResultComponent(options: {
 	hint: string;
 	isHovered?: () => boolean;
 	isGrouped?: () => boolean;
+	preview?: boolean;
 }): Component {
 	return {
 		invalidate() {},
@@ -96,24 +136,17 @@ export function createPlanResultComponent(options: {
 			};
 			if (start) note(`… ${start} earlier steps`);
 			for (const step of selected) {
-				const active = step.status === "in_progress";
-				const icon = active
-					? fg("accent", "○")
-					: step.status === "completed"
-						? fg("success", "✓")
-						: fg("dim", "·");
-				item(
-					`  ${icon} `,
-					step.goal,
-					active ? "text" : step.status === "completed" ? "dim" : "muted",
-				);
+				const active = !options.preview && step.status === "in_progress";
+				const completed = !options.preview && step.status === "completed";
+				const icon = active ? fg("accent", "○") : completed ? fg("success", "✓") : fg("dim", "·");
+				item(`  ${icon} `, step.goal, active ? "text" : completed ? "dim" : "muted");
 			}
 			const remaining = plan.steps.length - start - selected.length;
 			if (remaining) note(`… ${remaining} more steps`);
 			for (const advice of expanded ? plan.advice : plan.advice.slice(0, 3))
 				item("  ! ", advice, "muted");
 			if (!expanded && plan.advice.length > 3) note(`… ${plan.advice.length - 3} more notes`);
-			if (expanded && !options.isGrouped?.()) {
+			if (expanded && !options.preview && !options.isGrouped?.()) {
 				for (const [key, label, color] of [
 					["decisions", "Decisions", "muted"],
 					["files_changed", "Changed files", "mdCode"],
@@ -125,7 +158,7 @@ export function createPlanResultComponent(options: {
 					for (const value of values) item("  · ", value, color);
 				}
 			}
-			if (!options.isGrouped?.())
+			if (!options.preview && !options.isGrouped?.())
 				lines.push(fg(options.isHovered?.() ? "text" : "dim", options.hint));
 			return lines.map((line) => truncateToWidth(line, width));
 		},

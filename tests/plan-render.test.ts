@@ -11,6 +11,7 @@ import { installToolGrouping, ToolGroupComponent } from "../extensions/renderer/
 import { setMessageDisplayTheme } from "../extensions/renderer/tool/message-display.ts";
 import { WriteExecutionMetadataStore } from "../extensions/renderer/tool/diff/index.ts";
 import {
+	createPlanPreviewComponent,
 	createPlanResultComponent,
 	planFromResult,
 	planSummary,
@@ -72,10 +73,54 @@ test("plan data uses accepted state, preserves XML-only history and advice, reje
 	);
 	assert.equal(planFromResult({ ...actual, isError: true }), undefined);
 	assert.equal(planSummary(args(), { ...actual, isError: true }), "Update failed");
+	assert.equal(planSummary(args()), "updating · 检查中文路径 🧪");
+	assert.equal(planSummary(args(), undefined, false), "updating");
 	assert.equal(
 		planFromResult({ content: [{ type: "text", text: "Unknown execution result" }] }),
 		undefined,
 	);
+});
+
+test("streamed plan arguments appear before results without claiming accepted completion", () => {
+	const hooks = installDefaultMode(new WriteExecutionMetadataStore());
+	try {
+		const tool = nativeTool("update_plan", {});
+		assert.match(render(tool), /Receiving plan…/);
+		assert.doesNotMatch(render(tool), /done|✓|click to show more/);
+		tool.updateArgs({
+			steps: [
+				{ id: "one", goal: "收到的预览步骤", status: "completed" },
+				{ id: "two", goal: "接收中的步骤" },
+				{},
+			],
+		});
+		assert.match(render(tool), /· 收到的预览步骤/);
+		assert.match(render(tool), /· 接收中的步骤/);
+		assert.doesNotMatch(render(tool), /done|✓|click to show more/);
+		tool.markExecutionStarted();
+		tool.updateResult({ content: [] }, true);
+		assert.match(render(tool), /· 收到的预览步骤/);
+		assert.doesNotMatch(render(tool), /Pending…|done|✓/);
+		tool.updateArgs({
+			...args(),
+			steps: steps().map((step) => ({ ...step, status: "completed" })),
+		});
+		tool.updateResult(result());
+		assert.match(render(tool), /○ Update Plan 1\/3 done/);
+		assert.match(render(tool), /○ 实现计划面板/);
+		assert.doesNotMatch(render(tool), /✓ Update Plan|收到的预览步骤|Receiving plan…/);
+		tool.updateResult(result(steps().map((step) => ({ ...step, status: "completed" }))));
+		assert.match(render(tool), /✓ Update Plan 3\/3 done/);
+		tool.updateResult({
+			content: [{ type: "text", text: "Plan update was aborted" }],
+			isError: true,
+		});
+		assert.match(render(tool), /✗ Update Plan/);
+		assert.match(render(tool), /Plan update was aborted/);
+		assert.doesNotMatch(render(tool), /3\/3 done|接收中的步骤|实现计划面板|Receiving plan…/);
+	} finally {
+		hooks.shutdown();
+	}
 });
 
 test("standalone plan is a neutral native panel; partial/completed updates, expansion, errors and original data remain accurate", () => {
@@ -103,7 +148,7 @@ test("standalone plan is a neutral native panel; partial/completed updates, expa
 		assert.match(render(tool), /实现计划面板/);
 		tool.updateResult(accepted, false);
 		const collapsed = render(tool);
-		assert.match(collapsed, /✓ Update Plan 1\/3 done/);
+		assert.match(collapsed, /○ Update Plan 1\/3 done/);
 		for (const goal of steps().map((step) => step.goal)) assert.ok(collapsed.includes(goal));
 		assert.doesNotMatch(collapsed, /sol-pi-plan|"progress"|"steps"|lines returned|Decisions/);
 		assert.match(collapsed, /click to show more/);
@@ -161,7 +206,8 @@ test("grouped update_plan stays lightweight, reflects accepted result, refreshes
 		const group = parent.children[0] as ToolGroupComponent;
 		assert.ok(group instanceof ToolGroupComponent, "plan remains groupable alongside other tools");
 		const collapsed = render(group);
-		assert.match(collapsed, /Update Plan 1\/3 done · 实现计划面板/);
+		assert.match(collapsed, /✓ Update Plan 1\/3 done · 实现计划面板/);
+		assert.match(collapsed, /Multiple Tools: 2 done/);
 		assert.doesNotMatch(collapsed, /"progress"|"decisions"|sol-pi-plan|检查中文路径/);
 		group.setExpanded(true);
 		assert.match(render(group), /检查中文路径/);
@@ -173,6 +219,7 @@ test("grouped update_plan stays lightweight, reflects accepted result, refreshes
 		group.removeTool(plan);
 		const standaloneParent = new Container();
 		standaloneParent.addChild(plan);
+		assert.match(render(plan), /○ Update Plan 1\/3 done/);
 		assert.match(
 			render(plan),
 			/Decisions/,
@@ -236,7 +283,19 @@ test("long plans focus the active step; expansion preserves full text, advice an
 	assert.match(full, /步骤 14/);
 	assert.match(full, /补充说明/);
 	assert.doesNotMatch(full, /not-a-clipboard/);
-	for (const component of [collapsed, expanded])
+	const previewCollapsed = createPlanPreviewComponent({
+		args: { steps: long },
+		theme,
+		expanded: false,
+	});
+	assert.match(render(previewCollapsed), /· 步骤 10/);
+	assert.match(render(previewCollapsed), /8 earlier steps/);
+	assert.doesNotMatch(render(previewCollapsed), /✓|○|done|not-a-clipboard/);
+	const preview = createPlanPreviewComponent({ args: { steps: long }, theme, expanded: true });
+	assert.match(render(preview), /· 步骤 0/);
+	assert.match(render(preview), /· 步骤 14/);
+	assert.doesNotMatch(render(preview), /✓|○|done|not-a-clipboard|Collapse|Decisions/);
+	for (const component of [collapsed, expanded, previewCollapsed, preview])
 		for (const width of [8, 22, 50])
 			for (const line of component.render(width)) assert.ok(visibleWidth(line) <= width);
 });
