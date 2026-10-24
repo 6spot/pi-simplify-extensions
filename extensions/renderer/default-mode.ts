@@ -80,7 +80,13 @@ function syncToolShell(component: any, shell: "default" | "self"): void {
 	const target = shell === "self" ? component.selfRenderContainer : component.contentBox;
 	if (!target || !Array.isArray(component.children)) return;
 	const candidates = new Set(
-		[component.contentText, component.contentBox, component.selfRenderContainer].filter(Boolean),
+		[
+			component.contentText,
+			// Unknown/deferred tools mount this native mouse wrapper, not contentText directly.
+			component.contentTextRegion,
+			component.contentBox,
+			component.selfRenderContainer,
+		].filter(Boolean),
 	);
 	const indexes = component.children
 		.map((child: any, index: number) => (candidates.has(child) ? index : -1))
@@ -217,6 +223,7 @@ function installGlobalToolRendering(
 			? previous.originalGetRenderContext
 			: prototype.getRenderContext;
 	if (isOwnershipAwarePatch(previous)) disconnectGlobalToolRenderPatch(previous);
+	const styledDisplays = new WeakSet<object>();
 
 	const patch: GlobalToolRenderPatch = {
 		version: 2,
@@ -252,6 +259,7 @@ function installGlobalToolRendering(
 		},
 		getCallRenderer: function (this: any, ...args: any[]) {
 			if (patch.active && shouldGloballyStyleTool(this)) {
+				styledDisplays.add(this);
 				return getGloballyStyledTool(this, patch).renderCall;
 			}
 			return patch.downstream.getCallRenderer.apply(this, args);
@@ -284,6 +292,9 @@ function installGlobalToolRendering(
 		if (!patch.active || !shouldGloballyStyleTool(this)) {
 			return originalRender.call(this, width);
 		}
+		// Reload can restore history before this patch is installed. Rebuild the native
+		// call/result components once; repainting their cached lines cannot restyle them.
+		if (!styledDisplays.has(this)) this.updateDisplay();
 		const cache = patch.paintCache;
 		// Live partial output and elapsed time can change without invalidation.
 		// Keep those rows fresh when Working requests a repaint, including the

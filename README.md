@@ -23,6 +23,8 @@ pi install git:github.com/6spot/pi-simplify-extensions
 /reload
 ```
 
+重载或恢复会话后，已有工具卡片也会重新应用当前展示，包括完整 SoL-Pi 延后注册的计划工具，无需再次执行 `update_plan` 刷新旧卡片。
+
 本地开发可在项目目录运行 `pi -e .`。检查代码可运行 `npm ci`、`npm run typecheck`、`npm test`。
 
 在 Pi 的 `/settings` 中切换主题 `simplify-dark` 或 `simplify-light`。两者采用暖灰配色：浅色偏纸白和浅石灰，深色偏暖炭灰；工具卡与输入框用不同深浅区分，在真彩色和 256 色终端中都保留层次。工具摘要中的命令、路径和展开后的普通输入值用偏暖的灰色，以明暗层次与输出区分，行内代码与其同色；链接和进行中标记保留柔和蓝色。成功使用绿色标记，Diff 保留低饱和的增删底色和行内强调。原生和 Compact Thinking 思考文字统一使用比正文更淡的中性灰。

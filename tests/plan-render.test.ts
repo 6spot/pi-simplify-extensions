@@ -81,6 +81,66 @@ test("plan data uses accepted state, preserves XML-only history and advice, reje
 	);
 });
 
+test("restored plan cards rebuild their display once when rendering is installed or reloaded", () => {
+	const tool = nativeTool("update_plan", args());
+	tool.updateResult(result());
+	assert.match(render(tool), /"steps"/);
+	assert.match(render(tool), /sol-pi-plan/);
+	const updateDisplay = tool.updateDisplay.bind(tool);
+	let rebuilds = 0;
+	tool.updateDisplay = () => {
+		rebuilds++;
+		updateDisplay();
+	};
+	const first = installDefaultMode(new WriteExecutionMetadataStore());
+	let reloaded: ReturnType<typeof installDefaultMode> | undefined;
+	try {
+		let view = render(tool);
+		assert.match(view, /○ Update Plan 1\/3 done/);
+		assert.match(view, /✓ 检查中文路径/);
+		assert.doesNotMatch(view, /"steps"|sol-pi-plan|"progress"/);
+		assert.equal(rebuilds, 1, "rebuild the native display created before installation");
+		render(tool);
+		assert.equal(rebuilds, 1, "ordinary repaint reuses the rebuilt display");
+		tool.setExpanded(true);
+		view = render(tool);
+		assert.match(view, /原始决策保留在展开视图/);
+		assert.equal(rebuilds, 2, "native updates already use the installed renderer");
+
+		first.shutdown();
+		const restored = nativeTool("update_plan", args(), "restored");
+		restored.updateResult(result(steps().map((step) => ({ ...step, status: "completed" }))));
+		restored.setExpanded(true);
+		assert.match(render(restored), /sol-pi-plan/);
+		const updateRestored = restored.updateDisplay.bind(restored);
+		let restoredRebuilds = 0;
+		restored.updateDisplay = () => {
+			restoredRebuilds++;
+			updateRestored();
+		};
+		reloaded = installDefaultMode(new WriteExecutionMetadataStore());
+		view = render(restored);
+		assert.match(view, /✓ Update Plan 3\/3 done/);
+		assert.match(view, /原始决策保留在展开视图/);
+		assert.doesNotMatch(view, /"steps"|sol-pi-plan/);
+		assert.equal(restoredRebuilds, 1, "refresh the restored component for the new installation");
+		render(restored);
+		assert.equal(restoredRebuilds, 1);
+
+		restored.updateResult({
+			content: [{ type: "text", text: "Plan update was aborted" }],
+			isError: true,
+		});
+		view = render(restored);
+		assert.match(view, /✗ Update Plan/);
+		assert.match(view, /Plan update was aborted/);
+		assert.doesNotMatch(view, /3\/3 done/);
+	} finally {
+		reloaded?.shutdown();
+		first.shutdown();
+	}
+});
+
 test("streamed plan arguments appear before results without claiming accepted completion", () => {
 	const hooks = installDefaultMode(new WriteExecutionMetadataStore());
 	try {
