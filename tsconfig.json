@@ -12,6 +12,7 @@
   },
   "include": [
     "extensions/**/*.ts",
+    "subagent/**/*.ts",
     "tests/**/*.ts"
   ]
 }

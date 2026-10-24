@@ -1,0 +1,96 @@
+# 官方 Subagent 示例的后台任务扩展
+
+从本机 Pi 官方示例的 `index.ts` / `agents.ts` 副本维护，要求 **Pi 1.4 或更新版本**。同步 single、parallel、chain 沿用原实现；新增后台单任务、语义报告和双向通信。不是第三方 `pi-subagents`，不修改 Pi Core 或 Trellis，也不依赖数据库或服务。
+
+## 加载
+
+此目录独立于 Simplify 的展示扩展，未加入根 `package.json` 的默认扩展入口。首次加载可使用：
+
+```bash
+pi --extension /absolute/path/pi-simplify-extensions/subagent/index.ts
+```
+
+已有官方示例时，应先把 `~/.pi/agent/extensions/subagent` 备份到 **extensions 目录之外**，再把该路径链接到本目录，避免同时注册两个 `subagent`。如果原路径是软链接，先记录原目标，不修改目标中的上游文件。完成安装后，现有会话需 `/reload`，新会话会直接加载。
+
+无需增加配置。当 `subagent` 已启用时，扩展在 `session_start` 自动启用管理工具 `subagent_task`。后台子进程仅增加 `subagent_report`，不注册本扩展的派发和管理工具。
+
+## 工具用法
+
+下面是模型调用参数，不是 Shell 命令。`agent` 应替换为已发现的 Agent 名称。
+
+后台派发，立即获得 `id`：
+
+```json
+{"agent":"worker","task":"检查解析器边界，完成一个有用阶段或遇到阻塞时报告","background":true}
+```
+
+管理任务：
+
+```json
+{"action":"list"}
+{"action":"get","id":"任务 ID"}
+{"action":"send","id":"任务 ID","message":"补充约束：保持现有 API","mode":"steer"}
+{"action":"send","id":"任务 ID","message":"采用方案 A，继续完成","mode":"followUp"}
+{"action":"wait","id":"任务 ID","after":2,"timeoutMs":10000}
+{"action":"cancel","id":"任务 ID"}
+```
+
+- `steer` 在当前工具批次执行完后、下次模型请求前应用；`followUp` 等当前工作结束后应用。空闲的阻塞子任务收到任一模式的消息都会开始下一轮，沿用原子会话。使用官方 `prompt + streamingBehavior`，避免空闲时仅入队却不启动。
+- `send` 结果中的 `last_instruction` 包含实际 RPC 接受状态 `started` / `queued`；接受不等于模型已执行。若输入被子扩展处理、未入队，则返回错误。
+- `wait` 等待下一个语义事件、终态或超时，默认 10 秒、上限 30 秒；`after` 使用上次返回的 `revision`。取消等待只终止等待，不取消任务。
+- 查询返回 `running` / `blocked` / `completed` / `failed` / `cancelled`、启动/结束时间、耗时、最近活动、`idle_duration`（秒）、最新进度、事件历史及最终结果/错误。静默时长只是事实，不自动判为卡死。
+- 结果和派发的折叠视图显示 Agent、状态、任务 ID 和时间；展开可查看查询原文。消息用官方 `Text` 和主题槽位渲染。
+
+`background` 仅支持 single。并行后台任务可多次派发，每个返回独立 ID；`tasks`、`chain` 仍是原来的同步执行模式。
+
+项目 Agent 仍需指定 `agentScope: "project"` 或 `"both"`，默认仅发现用户 Agent。沿用原来的项目可信度和 `confirmProjectAgents` 确认逻辑，拒绝授权不会启动任务；未提供 UI 的运行模式仍遵循官方示例原行为。Agent frontmatter 的 `tools` 同时支持逗号字符串和 YAML 数组。模型优先使用 Agent 配置，否则继承父模型与 Thinking Level；工作目录、Agent prompt、原始任务和工具调用钩子注入的上下文继续传给子进程。
+
+## 语义报告与主模型投递
+
+子 Agent 自主调用专用工具：
+
+```json
+{"kind":"progress","message":"解析阶段完成；发现空数组与缺失字段走不同路径"}
+{"kind":"blocked","message":"缺少测试数据，需要父 Agent 提供样本路径"}
+{"kind":"decision","message":"两种修复行为不兼容，请确认是否保留旧 API"}
+```
+
+`blocked` / `decision` 后应结束当前回复，等待父 Agent 的明确消息。父进程保留该子进程。最终结果使用正常 assistant 最终回复；以 `agent_settled` 判定结束，避免把仍有后续工作的一轮 `agent_end` 当成完成。子进程错误、无最终文本、交互 UI 请求或异常退出均按实际情况报告失败。
+
+路径为：`subagent_report` → 官方 `appendEntry` → RPC `entry_appended` → 父任务注册表 → `pi.sendMessage(..., { deliverAs: "followUp", triggerTurn: true })` → 主模型后续上下文。它不依赖工具的 `onUpdate`。父模型空闲时可被唤醒；忙碌时在官方 follow-up 边界处理。报告标注为子任务数据，不是新增用户指令。
+
+报告基于模型对工作的判断，不由工具次数、计时器或百分比生成。后台工具活动只更新时间。相同报告与重复序号被去重，同一事件循环内的通知会合并；不把父模型回复自动回传给子任务，避免互相触发。每任务自动发送最多 20 条普通进度，在保留决策/阻塞余量后，非终态通知总上限为 40；超限仍更新可查询的状态及历史，`auto_reports_suppressed` 记录抑制数量，终态始终投递。
+
+## 边界与清理
+
+- 当前会话最多 4 个活动后台任务（阻塞也占位），保留最多 32 个任务；达到上限时淘汰最早的终态任务。
+- 每任务保留最近 16 条事件，报告正文限制 2,048 字符，最终结果限制 32 Ki 字符；截断有明确提示。完整大型产物应写入文件并报告路径。
+- 任务与报告不跨重启恢复。正常退出、会话切换和 `/reload` 释放注册表、待投递事件、临时 prompt 和子进程。宿主被 `SIGKILL` 或断电无法执行生命周期钩子。
+- 薄 RPC 层只负责请求关联、有限缓冲、退出通知和进程清理，Agent Runtime 与队列由官方 Pi 实现。请求接受超时 15 秒，不限制任务总时长；自动模型重试期间也不会用静默判失败。
+- POSIX 用独立进程组回收 Pi 和未自行脱离进程组的工具子进程，先 TERM、再 KILL。Windows 仅回收直接子进程，未承诺完整进程树回收。
+- 后台无交互终端；需要 select/confirm/input/editor 的子扩展会让任务明确失败，不会无限等待。普通通知和状态更新不会导致失败。
+- Agent 的语义报告依赖模型遵循指令；本扩展不保证报告频率，也不会用虚构进度补齐。Trellis 本身未被修改；测试验证的是原有 `tool_call` 上下文注入链路，而非未安装的 Trellis 插件端到端验证。
+
+## 实现与验证
+
+| 文件 | 职责 |
+| --- | --- |
+| `index.ts` / `agents.ts` | 官方同步实现、发现与授权；后台派发入口 |
+| `rpc.ts` | 官方 JSONL RPC 传输及进程组管理 |
+| `tasks.ts` | 任务状态、报告去重、双向消息、等待与清理 |
+| `background.ts` | 父模型 follow-up 投递、管理工具与 TUI 摘要 |
+| `report.ts` | 子任务报告工具及报告约定 |
+
+```bash
+npm ci
+npm run typecheck
+# 指向实际安装的 Pi 1.4+，同时运行全部仓库测试：
+PI_SUBAGENT_TEST_CLI=/path/to/pi-coding-agent/dist/cli.js npm test
+git diff --check
+```
+
+仓库已有开发 SDK 为 1.1，未为此升级依赖；默认 `npm test` 在旧 SDK 下会明确跳过要求 1.4 的进程集成测试。设置上面的环境变量后不会跳过。
+
+集成测试启动真实 Pi CLI、真实子进程和本机确定性 HTTP 模型服务，检查 **实际主模型请求**含语义进度、决策和最终结果，验证 busy steer、blocked followUp、同步 single/parallel/chain、任务隔离、异常退出、Bash 子进程取消和重载清理。授权拒绝、YAML tools、等待取消、重复阻塞状态和消息竞态另有回归测试。
+
+本次还使用实际安装路径及现有 `magpie/group/openai` 在线模型完成了一个临时目录任务：子 Agent 读取文件核验两项事实，主动报告进度、请求语言决策，主 Agent 发送 `USE_ENGLISH` 后，同一子任务给出正确最终摘要；完成后清理了测试进程和目录。这证明本次运行链路可用，不保证所有模型都遵循报告约定。用户实际终端的视觉效果仍需人工验收。

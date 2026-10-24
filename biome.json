@@ -8,6 +8,7 @@
 	"files": {
 		"includes": [
 			"extensions/**/*.ts",
+			"subagent/**/*.ts",
 			"tests/**/*.ts",
 			"scripts/**/*.mjs",
 			"package.json",
