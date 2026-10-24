@@ -1,6 +1,6 @@
 import { posix, win32 } from "node:path";
 import type { ThemeColor } from "@earendil-works/pi-coding-agent";
-import { visibleWidth } from "@earendil-works/pi-tui";
+import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { collapseHintText } from "../../utils/expansion-hints.ts";
 export {
 	collapseHintText,
@@ -28,6 +28,14 @@ const MIN_PAYLOAD_WIDTH = 10;
 
 /** 工具输入与行内代码共用暖灰；链接保留蓝色，muted 留给辅助信息。 */
 export const TOOL_INPUT_COLOR: ThemeColor = "mdCode";
+
+/** Keep a complete trailing control when at least the status and tool name can still fit. */
+export function renderToolHeaderToWidth(header: string, hint: string, width: number): string {
+	const headerWidth = width - visibleWidth(hint);
+	return hint && headerWidth >= 8
+		? truncateToWidth(header, headerWidth, "…") + hint
+		: truncateToWidth(header, width);
+}
 
 /** 品牌大小写固定写法；humanize 推导不出来的工具名写在这里。 */
 const TOOL_LABEL_OVERRIDES: Readonly<Record<string, string>> = {

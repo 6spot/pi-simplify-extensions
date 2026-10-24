@@ -34,6 +34,8 @@ pi install git:github.com/6spot/pi-simplify-extensions
 
 Update Plan、Bash、Grep、Find、Read 独立卡片默认收起时不绘制背景，运行、成功和失败均如此；展开后才显示中性或错误背景。状态标记、错误文字、内容预览及原生布局保持各自作用。
 
+展开与收起提示按工具结构放在行内：Read、Grep、Find、Bash、Update Plan、Subagent 放在标题末尾；Edit、Write Diff 保留在末尾的差异摘要之后。Read 的 `More available · offset=…` 继续单独表示下一次读取位置。Read、Grep、Find、Bash 的标题在窄屏下优先为完整操作提示留出空间，过窄时省略提示，仍可使用配置的展开快捷键。
+
 TUI 的正文背景由终端决定，主题中的页面底色用于 HTML 导出。Shell 输入目前按整段输入着色，已有代码高亮继续保留，不额外解析 Shell 语法。
 
 Footer 的上下文与费用统计在重绘间复用，流式期间最多约每秒重新统计一次；切换会话、历史位置、模型或 Thinking Level 时立即刷新，避免长会话在每次重绘时遍历全部记录。

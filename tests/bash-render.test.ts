@@ -58,7 +58,8 @@ test("Bash streams a real output tail and replaces it with the final result, kee
 		const partial = output("first hidden\nsecond hidden\nthird\nfourth\nfifth\nsixth");
 		tool.updateResult(partial, true);
 		const running = render(tool);
-		assert.match(running, /○ Bash · 4\.2s/);
+		assert.match(running, /○ Bash · 4\.2s · [^\n]*to show more/);
+		assert.equal(running.match(/to show more/g)?.length, 1);
 		for (const line of ["third", "fourth", "fifth", "sixth"])
 			assert.match(running, new RegExp(line));
 		assert.doesNotMatch(running, /first hidden|second hidden|Pending|exit 0/);
@@ -66,18 +67,20 @@ test("Bash streams a real output tail and replaces it with the final result, kee
 			output("", { durationMs: 1_200, structuredContent: { exit_code: 0, wall_time_seconds: 10 } }),
 		);
 		const settled = render(tool);
-		assert.match(settled, /✓ Bash · exit 0 · 1\.2s/);
+		assert.match(settled, /✓ Bash · exit 0 · 1\.2s · [^\n]*to show more/);
+		assert.equal(settled.match(/to show more/g)?.length, 1);
 		assert.match(settled, /\(no output\)/);
 		assert.doesNotMatch(settled, /sixth|4\.2s|10\.0s/);
 		assert.equal(tool.render(100), tool.render(100), "settled paints keep the normal cache");
 		tool.updateResult(
 			output("real failure\nCommand exited with code 7", { isError: true, durationMs: 1_500 }),
 		);
-		assert.match(render(tool), /✗ Bash · exit 7 · 1\.5s/);
+		assert.match(render(tool), /✗ Bash · exit 7 · 1\.5s · [^\n]*to show more/);
 		assert.doesNotMatch(render(tool), /✓ Bash|exit 0|\(no output\)/);
 		assert.equal(slots.length, 0, "collapsed Bash including errors is transparent");
 		tool.setExpanded(true);
 		render(tool);
+		assert.match(render(tool), /✗ Bash · exit 7 · 1\.5s · ↑ Collapse/);
 		assert.ok(slots.includes("toolErrorBg"));
 		assert.equal(
 			partial.content[0].text,
@@ -130,7 +133,7 @@ test("Bash history uses structured timing when available, and does not invent ti
 		);
 		assert.match(render(tool), /✗ Bash · exit 3 · 2\.5s/);
 		tool.updateResult(output("old result"));
-		assert.match(render(tool), /✓ Bash\s*\n/);
+		assert.match(render(tool), /✓ Bash · [^\n]*to show more/);
 		assert.doesNotMatch(render(tool), /exit 3|2\.5s|exit 0/);
 	} finally {
 		cleanup();
@@ -147,8 +150,9 @@ test("expanded Bash retains long available output, native truncation notes, comm
 		});
 		pending.markExecutionStarted();
 		assert.doesNotMatch(render(pending), /LONG_COMMAND_END/);
-		assert.match(render(pending), /to show more/);
+		assert.match(render(pending), /○ Bash[^\n]* · [^\n]*to show more/);
 		pending.setExpanded(true);
+		assert.match(render(pending), /○ Bash[^\n]* · ↑ Collapse/);
 		assert.match(render(pending), /LONG_COMMAND_END/);
 		assert.doesNotMatch(render(pending), /to show more/);
 		const tool = nativeTool("long", { command: "printf '中文路径 🧪'\nprintf second", timeout: 5 });

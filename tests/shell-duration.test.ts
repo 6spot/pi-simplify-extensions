@@ -100,10 +100,10 @@ test("运行中：shell 报已用时间，并且随重绘更新", async () => {
 		assert.match(running.join("\n"), /Waiting for output…/, "尚无输出时显示等待提示");
 
 		now = 1_250;
-		assert.match(render(tool)[0]!, /Bash · 250ms$/, "时间推进后数字要跟着变");
+		assert.match(render(tool)[0]!, /Bash · 250ms · [^\n]*to show more$/, "时间推进后数字要跟着变");
 
 		now = 1_000 + 4_000;
-		assert.match(render(tool)[0]!, /Bash · 4\.0s$/);
+		assert.match(render(tool)[0]!, /Bash · 4\.0s · [^\n]*to show more$/);
 	} finally {
 		Date.now = originalNow;
 		hooks.shutdown();
@@ -120,7 +120,7 @@ test("时钟回拨不输出负数", () => {
 		tool.render(100); // 开始时间 = 5000
 		tool.updateResult({ content: [], isError: false }, true);
 		Date.now = () => 0; // 回拨
-		assert.match(render(tool)[0]!, /Bash · 0ms$/);
+		assert.match(render(tool)[0]!, /Bash · 0ms · [^\n]*to show more$/);
 	} finally {
 		Date.now = originalNow;
 		hooks.shutdown();

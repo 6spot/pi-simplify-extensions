@@ -4,6 +4,7 @@ import { sanitizeToolResultText } from "../../utils/tool-result-sanitize.ts";
 import {
 	collapseHintText,
 	displayPath,
+	renderToolHeaderToWidth,
 	showMoreHintText,
 	TOOL_INPUT_COLOR,
 	type ToolCallSummary,
@@ -205,6 +206,7 @@ export function createFileToolCallComponent(
 	args: any,
 	context: any,
 	theme: any,
+	hovered: () => boolean,
 ): Component {
 	const pending = !context?.result || Boolean(context.isPartial);
 	const error = Boolean(context?.result?.isError || context?.isError);
@@ -221,14 +223,19 @@ export function createFileToolCallComponent(
 				error ? "error" : pending ? "accent" : "success",
 				error ? "✗" : pending ? "○" : "✓",
 			);
-			const lines = [
-				truncateToWidth(
-					`${icon} ${theme.fg("toolTitle", summary.main)}${!pending && summary.detail ? theme.fg("dim", summary.detail) : ""}`,
-					width,
-				),
-			];
+			const inputLines = !context?.result ? input.render(Math.max(1, width - 2)) : [];
+			const expandable =
+				!context?.isGrouped?.() &&
+				(Boolean(context?.result) || context?.expanded || inputLines.length > 3);
+			const hint = expandable
+				? theme.fg(
+						hovered() ? "text" : "dim",
+						` · ${context?.expanded ? collapseHintText() : showMoreHintText()}`,
+					)
+				: "";
+			const header = `${icon} ${theme.fg("toolTitle", summary.main)}${!pending && summary.detail ? theme.fg("dim", summary.detail) : ""}`;
+			const lines = [renderToolHeaderToWidth(header, hint, width)];
 			if (!context?.result) {
-				const inputLines = input.render(Math.max(1, width - 2));
 				lines.push(
 					...inputLines
 						.slice(0, context?.expanded ? undefined : 3)
@@ -242,14 +249,6 @@ export function createFileToolCallComponent(
 						width,
 					),
 				);
-				if (inputLines.length > 3)
-					lines.push(
-						"",
-						truncateToWidth(
-							theme.fg("dim", context?.expanded ? collapseHintText() : showMoreHintText()),
-							width,
-						),
-					);
 			}
 			return lines;
 		},
@@ -262,8 +261,6 @@ export function createFileToolResultComponent(
 	result: any,
 	theme: any,
 	partial: boolean,
-	hint: string,
-	hovered: () => boolean,
 ): Component {
 	const view = fileToolView(name, args, result);
 	const summary = fileToolSummary(name, args);
@@ -310,8 +307,6 @@ export function createFileToolResultComponent(
 						.slice(0, 2)
 						.map((line) => `  ${line}`),
 				),
-				"",
-				theme.fg(hovered() ? "text" : "dim", hint),
 			].map((line) => truncateToWidth(line, width));
 		},
 	};

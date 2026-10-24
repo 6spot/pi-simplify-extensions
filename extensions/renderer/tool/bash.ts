@@ -1,6 +1,11 @@
 import { Text, truncateToWidth, type Component } from "@earendil-works/pi-tui";
 import { sanitizeToolResultText } from "../../utils/tool-result-sanitize.ts";
-import { showMoreHintText, TOOL_INPUT_COLOR } from "./names.ts";
+import {
+	collapseHintText,
+	renderToolHeaderToWidth,
+	showMoreHintText,
+	TOOL_INPUT_COLOR,
+} from "./names.ts";
 import { textFromResult } from "./result.ts";
 
 /** Preserve the returned output and native truncation/path notes, including on errors. */
@@ -54,6 +59,7 @@ export function createBashCallComponent(options: {
 	context: any;
 	theme: any;
 	elapsed: () => string | undefined;
+	isHovered: () => boolean;
 }): Component {
 	const { theme, context } = options;
 	const command = commandView(options.args, theme);
@@ -70,16 +76,23 @@ export function createBashCallComponent(options: {
 				.filter(Boolean)
 				.join(" · ");
 			const header = `${icon} ${theme.fg("toolTitle", "Bash")}${metadata ? theme.fg("dim", ` · ${metadata}`) : ""}`;
-			const lines = [truncateToWidth(header, width)];
+			const fullCommand = !context.result ? command.render(Math.max(1, width - 2)) : [];
+			const expandable =
+				!context.isGrouped?.() &&
+				(Boolean(context.result) || context.expanded || fullCommand.length > 3);
+			const hint = expandable
+				? theme.fg(
+						options.isHovered() ? "text" : "dim",
+						` · ${context.expanded ? collapseHintText() : showMoreHintText()}`,
+					)
+				: "";
+			const lines = [renderToolHeaderToWidth(header, hint, width)];
 			if (!context.result) {
-				const fullCommand = command.render(Math.max(1, width - 2));
 				lines.push(
 					...(context.expanded
 						? fullCommand.map((line) => truncateToWidth(`  ${line}`, width))
 						: commandRows(command, width)),
 				);
-				if (!context.expanded && fullCommand.length > 3)
-					lines.push("", theme.fg("dim", showMoreHintText()));
 			}
 			return lines;
 		},
@@ -91,8 +104,6 @@ export function createBashResultComponent(options: {
 	result: any;
 	theme: any;
 	isPartial: boolean;
-	hint: string;
-	isHovered: () => boolean;
 }): Component {
 	const { theme } = options;
 	const command = commandView(options.args, theme);
@@ -119,8 +130,6 @@ export function createBashResultComponent(options: {
 					.slice(-4)
 					.map((line) => `  ${line}`),
 			];
-			if (!options.isPartial || outputLines.length > 4 || command.render(bodyWidth).length > 3)
-				lines.push("", theme.fg(options.isHovered() ? "text" : "dim", options.hint));
 			return lines.map((line) => truncateToWidth(line, width));
 		},
 	};

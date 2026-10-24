@@ -188,7 +188,9 @@ export function createCcstyleTool(
 			}
 
 			if (FILE_PANEL_TOOL_NAMES.has(toolName))
-				return createFileToolCallComponent(toolName, args, context, theme);
+				return createFileToolCallComponent(toolName, args, context, theme, () =>
+					isToolCallHovered(context?.toolCallId),
+				);
 
 			if (toolName === "bash") {
 				return createBashCallComponent({
@@ -196,6 +198,7 @@ export function createCcstyleTool(
 					context,
 					theme,
 					elapsed: () => shellDurationText(toolName, context, Boolean(context?.isPartial)),
+					isHovered: () => isToolCallHovered(context?.toolCallId),
 				});
 			}
 
@@ -405,8 +408,6 @@ export function createCcstyleTool(
 					{ ...result, isError: Boolean(isError) },
 					theme,
 					Boolean(options?.isPartial),
-					showMoreHintText(),
-					() => isToolCallHovered(context?.toolCallId),
 				);
 			}
 			if (toolName === "bash") {
@@ -431,8 +432,6 @@ export function createCcstyleTool(
 					result,
 					theme,
 					isPartial: Boolean(options?.isPartial),
-					hint: showMoreHintText(),
-					isHovered: () => isToolCallHovered(context?.toolCallId),
 				});
 			}
 			if (options?.isPartial) {

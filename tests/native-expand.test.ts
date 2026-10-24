@@ -72,6 +72,10 @@ test("legacy TUI frames expand native ASCII truncation rows and active plan titl
 		"... (20 more lines, ctrl+o to expand)",
 		"... (20 more lines, ctrl+o to show more)",
 		"○ Update Plan 1/3 done · click to show more",
+		"✓ Read · lines 82–133 · click to show more",
+		"○ Bash · 1.2s · click to show more",
+		"✗ Grep · click to show more",
+		"✓ Find · 3 paths · click to show more",
 	]) {
 		const tool: any = {
 			toolName: "native",
