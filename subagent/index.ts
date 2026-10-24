@@ -30,7 +30,8 @@ import {
 import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { fileURLToPath } from "node:url";
-import { registerTaskManager, taskSummary } from "./background.ts";
+import { registerTaskManager } from "./background.ts";
+import { createTaskView } from "./view.ts";
 import type { TaskSnapshot } from "./tasks.ts";
 import { type AgentConfig, type AgentScope, discoverAgents } from "./agents.ts";
 
@@ -887,6 +888,12 @@ export default function (pi: ExtensionAPI) {
 		},
 
 		renderCall(args, theme, _context) {
+			if (args.background)
+				return new Text(
+					theme.fg("toolTitle", theme.bold("subagent ")) + theme.fg("dim", "background"),
+					0,
+					0,
+				);
 			const scope: AgentScope = args.agentScope ?? "user";
 			if (args.chain && args.chain.length > 0) {
 				let text =
@@ -938,8 +945,8 @@ export default function (pi: ExtensionAPI) {
 
 		renderResult(result, { expanded }, theme, _context) {
 			const details = result.details as SubagentDetails | undefined;
-			if (details?.backgroundTask && !expanded)
-				return new Text(taskSummary(details.backgroundTask, theme), 0, 0);
+			if (details?.backgroundTask)
+				return createTaskView([details.backgroundTask], theme, expanded, getTaskManager.peek);
 			if (!details || details.results.length === 0) {
 				const text = result.content[0];
 				return new Text(text?.type === "text" ? text.text : "(no output)", 0, 0);

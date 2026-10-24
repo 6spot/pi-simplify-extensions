@@ -175,6 +175,10 @@ export class TaskManager {
 		if (!task) throw new Error(`Unknown subagent task ID: ${id}`);
 		return task;
 	}
+	peek(id: string): TaskSnapshot | undefined {
+		const task = this.tasks.get(id);
+		return task ? this.snapshot(task) : undefined;
+	}
 	get(id: string): TaskSnapshot {
 		return this.snapshot(this.require(id));
 	}

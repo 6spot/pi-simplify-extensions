@@ -69,6 +69,41 @@ async function fixture() {
 				);
 			return called ? "FIXTURE_DONE" : [tool("subagent_fixture", data)];
 		}
+		if (all.includes("PARENT_SLEEP_TEST")) {
+			const started = toolResult(messages, "subagent");
+			if (!started)
+				return [
+					tool("subagent", {
+						agent: "project-worker",
+						task: "CHILD_SLEEP_TEST",
+						background: true,
+						agentScope: "project",
+						confirmProjectAgents: false,
+					}),
+				];
+			if (all.includes("SLEEP_FINAL_RESULT")) return "PARENT_SLEEP_FINAL_SUMMARY";
+			if (all.includes("RESUME_SLEEP_TEST")) {
+				const sent = messages
+					.flatMap((message: any) => message.tool_calls ?? [])
+					.some(
+						(call: any) =>
+							call.function.name === "subagent_task" &&
+							JSON.parse(call.function.arguments).action === "send",
+					);
+				return sent
+					? "PARENT_SLEEP_RESUMED"
+					: [
+							tool("subagent_task", {
+								action: "send",
+								id: started.id,
+								message: "SLEEP_ANSWER_TOKEN",
+								mode: "followUp",
+							}),
+						];
+			}
+			if (all.includes("SLEEP_DECISION")) return "PARENT_SLEEP_WAITING_FOR_USER";
+			return [tool("subagent_task", { action: "sleep" })];
+		}
 		if (all.includes("PARENT_ASYNC_TEST")) {
 			const started = toolResult(messages, "subagent");
 			if (!started)
@@ -95,7 +130,20 @@ async function fixture() {
 						call.args.action === action &&
 						(!text || call.args.message === text),
 				);
-			if (all.includes("CHILD_PHASE_1") && !hasCall("send", "ADDITIONAL_STEER_TOKEN"))
+			if (!hasCall("send", "ADDITIONAL_STEER_TOKEN")) {
+				// Parent has independent work; wait in the fixture server for the child tool batch,
+				// then send while bash is busy. Passive progress must not be needed to wake it.
+				const deadline = Date.now() + 10000;
+				while (
+					!requests.some(
+						(request) =>
+							!JSON.stringify(request.messages).includes("PARENT_ASYNC_TEST") &&
+							JSON.stringify(request.messages).includes("CHILD_ASYNC_TEST"),
+					) &&
+					Date.now() < deadline
+				)
+					await delay(20);
+				await delay(250);
 				return [
 					tool("subagent_task", {
 						action: "send",
@@ -104,6 +152,7 @@ async function fixture() {
 						mode: "steer",
 					}),
 				];
+			}
 			if (all.includes("CHILD_DECISION_TOKEN") && !hasCall("get")) {
 				await delay(200); // Let the child settle blocked, proving idle resume as well as busy steering.
 				return [tool("subagent_task", { action: "get", id })];
@@ -161,6 +210,23 @@ async function fixture() {
 					kind: "blocked",
 					message: "Waiting for supplementary instruction.",
 				}),
+			];
+		}
+		if (all.includes("CHILD_SLEEP_TEST")) {
+			if (all.includes("SLEEP_ANSWER_TOKEN"))
+				return "SLEEP_FINAL_RESULT: the parent answer was applied.";
+			if (all.includes("SLEEP_DECISION"))
+				throw new Error("blocked child made a model request before explicit resume");
+			if (all.includes("SLEEP_PROGRESS"))
+				return [
+					tool("subagent_report", {
+						kind: "decision",
+						message: "SLEEP_DECISION: an explicit answer is required.",
+					}),
+				];
+			return [
+				tool("subagent_report", { kind: "progress", message: "SLEEP_PROGRESS: inputs inspected." }),
+				tool("bash", { command: "sleep 2" }),
 			];
 		}
 		if (all.includes("CHILD_WAIT_TEST")) {
@@ -440,6 +506,83 @@ test("real Pi: background reports reach the parent model, busy steer and blocked
 		const end = await f.invoke({ action: "get", id: started.id }, "subagent_task");
 		assert.equal(end.details.tasks[0].status, "completed");
 		assert.match(end.details.tasks[0].result, /ADDITIONAL_STEER_TOKEN.*DECISION_A_TOKEN/);
+	} finally {
+		await f.close();
+	}
+});
+
+test("real Pi: sleep ends the parent run, progress stays passive, blocked child waits without model calls, explicit send resumes", {
+	timeout: 45000,
+	skip,
+}, async () => {
+	const f = await fixture();
+	try {
+		const parentRequests = () =>
+			f.requests.filter((request) =>
+				JSON.stringify(request.messages).includes("PARENT_SLEEP_TEST"),
+			);
+		const childRequests = () =>
+			f.requests.filter(
+				(request) =>
+					JSON.stringify(request.messages).includes("CHILD_SLEEP_TEST") &&
+					!JSON.stringify(request.messages).includes("PARENT_SLEEP_TEST"),
+			);
+		await f.rpc.request({
+			type: "prompt",
+			message: "PARENT_SLEEP_TEST: delegate, sleep, and wait for an actionable event.",
+		});
+		await f.until(() =>
+			f.records.find(
+				(record) =>
+					record.type === "message_end" &&
+					record.message?.customType === "subagent-events" &&
+					textOf(record.message).includes("SLEEP_PROGRESS"),
+			),
+		);
+		assert.equal(
+			parentRequests().length,
+			2,
+			"sleep result does not cause an extra parent inference",
+		);
+		await delay(250);
+		assert.equal(parentRequests().length, 2, "ordinary progress does not wake the parent");
+		await f.until(() =>
+			f.records.find(
+				(record) =>
+					record.type === "message_end" &&
+					textOf(record.message).includes("PARENT_SLEEP_WAITING_FOR_USER"),
+			),
+		);
+		await f.until(() => f.records.filter((record) => record.type === "agent_settled").length >= 2);
+		assert.equal(parentRequests().length, 3, "decision wakes the parent exactly once");
+		assert.equal(
+			childRequests().length,
+			2,
+			"decision result does not request a child acknowledgement turn",
+		);
+		await delay(300);
+		assert.equal(parentRequests().length, 3);
+		assert.equal(childRequests().length, 2, "blocked child has no inference loop");
+		await f.rpc.request({
+			type: "prompt",
+			message: "RESUME_SLEEP_TEST: apply the requested answer.",
+		});
+		await f.until(() =>
+			f.records.find(
+				(record) =>
+					record.type === "message_end" &&
+					textOf(record.message).includes("PARENT_SLEEP_FINAL_SUMMARY"),
+			),
+		);
+		assert.equal(childRequests().length, 3, "explicit instruction resumes the same child once");
+		assert.ok(
+			parentRequests().some(
+				(request) =>
+					JSON.stringify(request.messages).includes("SLEEP_PROGRESS") &&
+					JSON.stringify(request.messages).includes("SLEEP_DECISION"),
+			),
+			"passive findings are present when a decision wakes the parent",
+		);
 	} finally {
 		await f.close();
 	}

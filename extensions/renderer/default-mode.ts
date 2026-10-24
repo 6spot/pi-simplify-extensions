@@ -20,7 +20,7 @@ import type { WriteExecutionMetadataStore } from "./tool/diff/index.ts";
 export { shouldRenderRichDiff } from "./tool/ccstyle-tool.ts";
 
 // pi-subagents 等扩展为 Agent 提供专用渲染器，ccstyle 必须保留。
-const DEDICATED_RENDERER_TOOLS = new Set(["Agent"]);
+const DEDICATED_RENDERER_TOOLS = new Set(["Agent", "subagent", "subagent_task"]);
 
 export type DefaultModeHooks = {
 	/** 本安装是否仍持有全局工具渲染补丁。 */
@@ -273,7 +273,7 @@ function installGlobalToolRendering(
 	prototype.getRenderContext = patch.getRenderContext;
 	// fullscreen 滚动/选区每帧整树 render；内容未变时复用上一帧行，避免重做 diff/Box。
 	patch.renderPaint = function (this: any, width: number): string[] {
-		if (!patch.active) {
+		if (!patch.active || !shouldGloballyStyleTool(this)) {
 			return originalRender.call(this, width);
 		}
 		const cache = patch.paintCache;

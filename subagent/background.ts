@@ -4,23 +4,14 @@ import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { TaskManager, type TaskEvent, type TaskSnapshot } from "./tasks.ts";
 
-export function taskSummary(task: TaskSnapshot, theme: Theme): string {
-	const icon =
-		task.status === "completed"
-			? theme.fg("success", "✓")
-			: task.status === "failed"
-				? theme.fg("error", "✗")
-				: task.status === "cancelled"
-					? theme.fg("dim", "–")
-					: theme.fg("accent", "○");
-	return `${icon} ${theme.fg("toolTitle", task.agent)} ${theme.fg("dim", `${task.status} · ${(task.elapsed_ms / 1000).toFixed(1)}s · idle ${task.idle_duration.toFixed(1)}s`)}\n${theme.fg("dim", task.id)}`;
-}
+import { createTaskView } from "./view.ts";
+export { taskSummary } from "./view.ts";
 
 /** No message handler relays parent responses back into children: only explicit child events wake the parent. */
 export function registerTaskManager(
 	pi: ExtensionAPI,
 	createRpc?: ConstructorParameters<typeof TaskManager>[1],
-): (ctx: ExtensionContext) => TaskManager {
+): ((ctx: ExtensionContext) => TaskManager) & { peek: (id: string) => TaskSnapshot | undefined } {
 	let manager: TaskManager | undefined;
 	let owner: string | undefined;
 	let delivery: NodeJS.Immediate | undefined;
@@ -118,10 +109,11 @@ export function registerTaskManager(
 					event.kind === "progress" ? "progress" : terminal(task.status) ? "final" : "blocked";
 				const seen = observedFinal.get(task.id);
 				const wake =
-					!seen ||
-					seen.status !== task.status ||
-					seen.result !== task.result ||
-					seen.error !== task.error;
+					event.kind !== "progress" &&
+					(!seen ||
+						seen.status !== task.status ||
+						seen.result !== task.result ||
+						seen.error !== task.error);
 				pending.set(`${task.id}:${category}`, { task, event, wake });
 				schedule(ctx);
 			},
@@ -141,7 +133,7 @@ export function registerTaskManager(
 	pi.on("before_agent_start", (event) => {
 		if (!manager?.list().length) return;
 		return {
-			systemPrompt: `${event.systemPrompt}\n\nBackground subagent communication: tool results are evidence for your reply, not a user-facing final answer. When a task finishes, summarize its actual result or failure for the user. Before ending a reply with tasks still active, state that they are running or waiting for input; do not claim all work is finished. Do not silently end on a new terminal event. Previously answered decisions need no duplicate reply.`,
+			systemPrompt: `${event.systemPrompt}\n\nBackground subagent communication: tool results are evidence for your reply, not a user-facing final answer. When a task finishes, summarize its actual result or failure for the user. Before ending a reply with tasks still active, state that they are running or waiting for input; do not claim all work is finished. Do not silently end on a new terminal event. Previously answered decisions need no duplicate reply. Ordinary progress is passive context, not a reason to acknowledge or poll. If no useful independent work remains and tasks are still active, tell the user what is pending, then call subagent_task sleep alone to suspend this run without another model request. Blockers, decisions and terminal results wake you automatically; send explicit instructions to resume a blocked child.`,
 		};
 	});
 	pi.on("session_start", async (_event, ctx) => {
@@ -182,10 +174,10 @@ export function registerTaskManager(
 		name: "subagent_task",
 		label: "Subagent task",
 		description:
-			"Manage background subagent task IDs in this session. list/get show status, timing, idle_duration (seconds; silence alone is not a failure), semantic reports and final result/error. send uses official steer or followUp semantics, resuming blocked children. wait waits for the next report/final or a bounded timeout; it does not poll the model. cancel terminates the child and its process group. Important child events arrive automatically when the parent is idle. On completion or failure, summarize the actual result for the user; if other tasks remain active, say so before ending your reply.",
+			"Manage background subagent task IDs in this session. list/get show status, timing, idle_duration (seconds; silence alone is not a failure), semantic reports and final result/error. send uses official steer or followUp semantics, resuming blocked children. wait waits for the next report/final or a bounded timeout; it does not poll the model. cancel terminates the child and its process group. Important child events arrive automatically when the parent is idle. Prefer sleep over repeated queries when no useful independent work remains. Call sleep alone after telling the user what is pending; it suspends this run without another model request. Decisions, blockers and terminal results wake the parent; progress is passive context. On completion or failure, summarize the actual result for the user; if other tasks remain active, say so before ending your reply.",
 		parameters: Type.Object({
-			action: StringEnum(["list", "get", "send", "wait", "cancel"] as const),
-			id: Type.Optional(Type.String({ description: "Task ID; required except for list" })),
+			action: StringEnum(["list", "get", "send", "wait", "sleep", "cancel"] as const),
+			id: Type.Optional(Type.String({ description: "Task ID; required except for list/sleep" })),
 			message: Type.Optional(Type.String({ minLength: 1, maxLength: 32768 })),
 			mode: Type.Optional(StringEnum(["steer", "followUp"] as const)),
 			after: Type.Optional(
@@ -206,7 +198,7 @@ export function registerTaskManager(
 		},
 		renderResult(result, { expanded }, theme) {
 			const tasks = (result.details as { tasks?: TaskSnapshot[] } | undefined)?.tasks;
-			if (expanded || !tasks?.length)
+			if (!tasks?.length)
 				return new Text(
 					result.content
 						.filter((part) => part.type === "text")
@@ -215,14 +207,37 @@ export function registerTaskManager(
 					0,
 					0,
 				);
-			const lines = tasks.slice(-4).map((task) => taskSummary(task, theme));
-			if (tasks.length > 4)
-				lines.unshift(theme.fg("dim", `${tasks.length - 4} earlier tasks (expand to view)`));
-			return new Text(lines.join("\n"), 0, 0);
+			return createTaskView(tasks, theme, expanded, (id) => manager?.peek(id));
 		},
 		async execute(_id, params, signal, _onUpdate, ctx) {
 			try {
 				const tasks = getManager(ctx);
+				if (params.action === "sleep") {
+					const snapshots = tasks.list();
+					const active = snapshots.filter((task) => !terminal(task.status));
+					if (!active.length) {
+						observe(snapshots);
+						return {
+							content: [
+								{
+									type: "text",
+									text: `No active background tasks; report the available results to the user.\n${JSON.stringify(snapshots, null, 2)}`,
+								},
+							],
+							details: { tasks: snapshots },
+						};
+					}
+					return {
+						content: [
+							{
+								type: "text",
+								text: "Parent run suspended. Decisions, blockers and terminal results wake it automatically; progress is passive context. User input can also resume it.",
+							},
+						],
+						details: { tasks: active },
+						terminate: true,
+					};
+				}
 				if (params.action !== "list" && !params.id) throw new Error("A task id is required");
 				let result: TaskSnapshot | TaskSnapshot[];
 				switch (params.action) {
@@ -257,5 +272,7 @@ export function registerTaskManager(
 			}
 		},
 	});
-	return getManager;
+	return Object.assign(getManager, {
+		peek: (id: string) => manager?.peek(id),
+	});
 }

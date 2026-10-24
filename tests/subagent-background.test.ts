@@ -114,6 +114,46 @@ function fixture() {
 	};
 }
 
+test("ordinary progress is passive context; sleeping the parent terminates only while work is active", async () => {
+	const f = fixture();
+	try {
+		assert.equal((await f.invoke({ action: "sleep" })).terminate, undefined);
+		const task = f.start();
+		await tick();
+		f.setIdle(true);
+		f.report(task.id, 1, "progress", "Useful finding without a question");
+		await tick();
+		assert.equal(f.messages.length, 1);
+		assert.equal(f.messages[0].options.triggerTurn, false);
+		assert.match(f.messages[0].message.content, /Useful finding/);
+		assert.equal((await f.invoke({ action: "sleep" })).terminate, true);
+		f.report(task.id, 2, "decision", "Choose the output language");
+		assert.equal((await f.invoke({ action: "sleep" })).terminate, true);
+		await tick();
+		assert.equal(
+			f.messages[1].options.triggerTurn,
+			true,
+			"sleep does not consume pending actionable events",
+		);
+		await f.invoke({ action: "send", id: task.id, message: "Use Chinese" });
+		f.final("Complete outcome");
+		await f.manager.wait(task.id);
+		const finished = await f.invoke({ action: "sleep" });
+		assert.match(
+			finished.content[0].text,
+			/Complete outcome/,
+			"a completion racing sleep is returned to the parent model",
+		);
+		assert.equal(
+			finished.terminate,
+			undefined,
+			"no active work must return to the model for a final answer",
+		);
+	} finally {
+		await f.fire("session_shutdown");
+	}
+});
+
 test("background status survives the parent's settled turn and follows waiting, resume and completion", async () => {
 	const f = fixture();
 	try {

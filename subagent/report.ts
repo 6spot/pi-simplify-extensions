@@ -11,7 +11,7 @@ export default function subagentReports(pi: ExtensionAPI) {
 		name: "subagent_report",
 		label: "Subagent progress",
 		description:
-			"Report a meaningful milestone, important finding, blocker or decision request to the parent. Use progress for useful stage completion/findings; blocked or decision when parent input is required. After blocked/decision, finish your current response and await parent instructions. Do not report tool counts, elapsed time, token activity or invented percentages. Final results belong in your final assistant response.",
+			"Report a meaningful milestone, important finding, blocker or decision request to the parent. Use progress for useful stage completion/findings; blocked or decision when parent input is required. After blocked/decision, this tool suspends the run without another model request; await parent instructions. Call blocked/decision alone as your last action. Do not report tool counts, elapsed time, token activity or invented percentages. Final results belong in your final assistant response.",
 		parameters: Type.Object({
 			kind: StringEnum(["progress", "blocked", "decision"] as const),
 			message: Type.String({
@@ -30,14 +30,15 @@ export default function subagentReports(pi: ExtensionAPI) {
 						text:
 							params.kind === "progress"
 								? "Report recorded for the parent (automatic delivery is bounded; the parent can also query it)."
-								: "Request recorded for the parent. End this response and wait for parent instructions; your task remains open.",
+								: "Request recorded for the parent. This run is suspended; parent instructions resume the same task.",
 					},
 				],
 				details: { taskId, sequence },
+				terminate: params.kind !== "progress",
 			};
 		},
 	});
 	pi.on("before_agent_start", async (event) => ({
-		systemPrompt: `${event.systemPrompt}\n\nYou are background subagent task ${taskId}. Use subagent_report proactively for meaningful completed stages or important findings, and for blockers/decisions needing the parent. Report semantic progress only, never tool counts/time estimates. If blocked or awaiting a decision, report it and end your current response; the parent may send instructions to resume this same isolated session. When finished, give the actual final result in your final assistant response. Do not invoke subagent or subagent_task, or launch other background subagents.`,
+		systemPrompt: `${event.systemPrompt}\n\nYou are background subagent task ${taskId}. Use subagent_report proactively for meaningful completed stages or important findings, and for blockers/decisions needing the parent. Report semantic progress only, never tool counts/time estimates. If blocked or awaiting a decision, call subagent_report alone as your last action; it suspends this run without a follow-up model request. Wait for parent instructions to resume this same isolated session. When finished, give the actual final result in your final assistant response. Do not invoke subagent or subagent_task, or launch other background subagents.`,
 	}));
 }
