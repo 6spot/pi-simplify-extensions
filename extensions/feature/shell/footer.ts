@@ -9,6 +9,7 @@ import { inputTextIndent } from "./prompt-editor.ts";
 import { createGitStatsRefresher, readGitStats, type GitStats } from "./git-stats.ts";
 
 const GIT_REFRESH_MS = 10_000;
+const SESSION_STATS_TTL_MS = 1000;
 
 export type FooterParts = {
 	model: string;
@@ -91,21 +92,50 @@ const createFooter =
 			tui.requestRender();
 		});
 
+		let statsMemo: { usage: ReturnType<typeof ctx.getContextUsage>; cost: number } | undefined;
+		let statsMemoKey = "";
+		let statsMemoAt = 0;
+		let statsManager: typeof ctx.sessionManager | undefined;
+		const sessionStats = () => {
+			const manager = ctx.sessionManager;
+			const model = ctx.model;
+			const key = JSON.stringify([
+				manager.getSessionId(),
+				manager.getSessionFile(),
+				manager.getLeafId(),
+				model?.provider,
+				model?.id,
+				model?.contextWindow,
+				ctx.thinkingLevel,
+			]);
+			if (
+				statsMemo &&
+				statsManager === manager &&
+				statsMemoKey === key &&
+				performance.now() - statsMemoAt < SESSION_STATS_TTL_MS
+			)
+				return statsMemo;
+			let cost = 0;
+			for (const entry of manager.getEntries()) {
+				if (entry.type === "message") {
+					const message = entry.message;
+					if (message.role === "assistant") cost += message.usage?.cost?.total || 0;
+					else if (message.role === "toolResult" && message.usage)
+						cost += message.usage.cost?.total || 0;
+				} else if ((entry.type === "branch_summary" || entry.type === "compaction") && entry.usage)
+					cost += entry.usage.cost?.total || 0;
+			}
+			statsMemo = { usage: ctx.getContextUsage(), cost };
+			statsMemoKey = key;
+			statsMemoAt = performance.now();
+			statsManager = manager;
+			return statsMemo;
+		};
+
 		return {
 			render(width: number): string[] {
 				const model = ctx.model;
-				const usage = ctx.getContextUsage();
-				let cost = 0;
-				for (const entry of ctx.sessionManager.getEntries()) {
-					if (entry.type === "message") {
-						const message = entry.message;
-						if (message.role === "assistant") cost += message.usage?.cost?.total || 0;
-						else if (message.role === "toolResult" && message.usage)
-							cost += message.usage.cost?.total || 0;
-					} else if ((entry.type === "branch_summary" || entry.type === "compaction") && entry.usage) {
-						cost += entry.usage.cost?.total || 0;
-					}
-				}
+				const { usage, cost } = sessionStats();
 				const directory = ctx.cwd.split(/[\\/]/).filter(Boolean).pop() || ctx.cwd;
 				const indent = Math.min(inputTextIndent(), Math.max(0, width - 1));
 				const line = formatOneLineFooter({

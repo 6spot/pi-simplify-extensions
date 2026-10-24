@@ -114,7 +114,7 @@ let sessionRenderTimer: ReturnType<typeof setTimeout> | null = null;
 let latestInteractionFrame: InteractionFrame = { regions: [] };
 
 /** Summary markers used by Pi and ccstyle; unlike the trailing hint, these survive truncation. */
-const COLLAPSED_TOOL_SUMMARY = /^\s*(?:↳|└|⎿|●|✓|✗|…)/;
+const COLLAPSED_TOOL_SUMMARY = /^\s*(?:↳|└|⎿|●|○|✓|✗|…|\.\.\.)/;
 
 function interactionRegionAt(packet: SgrMousePacket): InteractionRegion | null {
 	const matches = latestInteractionFrame.regions.filter(
@@ -245,10 +245,7 @@ function resolveCollapsePress(tui: any, packet: SgrMousePacket): any {
 	if (Math.abs(packet.row - press.row) > COLLAPSE_CLICK_MOVE_TOLERANCE) return undefined;
 	if (Date.now() - press.at > COLLAPSE_CLICK_MAX_MS) return undefined;
 	const card = press.card;
-	if (
-		card instanceof ToolGroupComponent &&
-		press.component !== card
-	) {
+	if (card instanceof ToolGroupComponent && press.component !== card) {
 		// 点击落在卡内工具行：官方 click 会对同一次点击再次 toggle，吞掉它。
 		suppressOfficialCardClickUntil = Date.now() + SUPPRESS_OFFICIAL_CARD_CLICK_MS;
 	}
@@ -340,25 +337,32 @@ const FULLSCREEN_VIEWPORT_PATCH = Symbol("ccstyle.fullscreen-viewport-patch");
  * diff 结果组件自带 remainder 行：声明存在时只有那一行是展开入口（正文里的同名字样不算）；
  * 未声明的组件继续用文本规则。
  */
-function isCollapsedHintRow(component: any, finalLine: string): boolean {
+function isCollapsedHintRow(component: any, finalLine: string, localRow?: number): boolean {
 	const result = component?.resultRendererComponent;
-	return typeof result?.isCollapsedHintLine === "function"
-		? result.isCollapsedHintLine(finalLine)
-		: true;
+	if (typeof result?.isCollapsedHintLine === "function")
+		return result.isCollapsedHintLine(finalLine, localRow);
+	return /(?:\((?:[^()\n]* \/ (?:click|to expand)|[^()\n]*, (?:[\w/+]+\s+)?to (?:expand|show more))\)|click to show more|to show more)\s*$/.test(
+		stripTerminalSequences(finalLine),
+	);
 }
 
 /**
  * pi 0.87 给工具结果区套了 MouseRegion：整卡左键 click 都会 setExpanded。
  * 命中该区域时官方会跳过文本选区，所以可以安全吞掉；单行摘要卡没有声明
- * remainder 行，继续走官方整行行为。
+ * remainder 行且没有原生展开提示时，继续走官方整行行为。
  */
 function blocksOfficialCardToggle(component: any, event: any): boolean {
 	if (event?.type !== "click" || event.button !== "left" || component?.expanded) return false;
 	const result = component?.resultRendererComponent;
-	if (typeof result?.isCollapsedHintLine !== "function") return false;
 	const lines = component.render?.(Math.max(1, Math.floor(Number(event.width) || 0)));
 	const line = Array.isArray(lines) ? lines[event.y] : undefined;
-	return typeof line === "string" && !result.isCollapsedHintLine(line);
+	if (typeof line !== "string") return false;
+	if (
+		typeof result?.isCollapsedHintLine !== "function" &&
+		!lines.some((row: string) => typeof row === "string" && isCollapsedHintRow(component, row))
+	)
+		return false;
+	return !isCollapsedHintRow(component, line, event.y);
 }
 
 /**
@@ -408,7 +412,7 @@ function handleFullscreenToolClick(tui: any, packet: SgrMousePacket): boolean {
 		const onHint = Boolean(
 			hint &&
 				(isThinking || (packet.col >= hint.startCol && packet.col <= hint.endCol)) &&
-				isCollapsedHintRow(component, line),
+				isCollapsedHintRow(component, line, hit.localRow),
 		);
 		if (!onHint) {
 			// 面板内非提示区（工具卡标题/摘要行、thinking 预览正文）：单击收起整块面板。
@@ -727,7 +731,7 @@ function buildInteractionFrame(
 				if (
 					box &&
 					COLLAPSED_TOOL_SUMMARY.test(stripTerminalSequences(line)) &&
-					isCollapsedHintRow(component, line)
+					isCollapsedHintRow(component, line, placement.componentRow)
 				) {
 					regions.push({ kind: "collapsed-hint", row: finalRow, ...box, component });
 				}
