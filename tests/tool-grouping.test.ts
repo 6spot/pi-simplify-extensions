@@ -424,7 +424,11 @@ test("pending and expanded groups bypass settled render caching", () => {
 		const group = parent.children[0] as ToolGroupComponent;
 
 		const pending = group.render(120);
-		assert.notStrictEqual(group.render(120), pending, "pending tool state stays live between renders");
+		assert.notStrictEqual(
+			group.render(120),
+			pending,
+			"pending tool state stays live between renders",
+		);
 
 		read.updateResult({ content: [], isError: false });
 		bash.updateResult({ content: [], isError: false });
@@ -684,7 +688,7 @@ test("组头列表用人性化名并恒带次数；组内 shell 行只报耗时"
 		assert.equal(rows3[1], " ├ ✗ Bash false · 20ms");
 		assert.equal(rows3[2], " └ ✓ Bash true · 5ms");
 
-		// 非 shell 工具不补尾巴。
+		// 非 shell 工具不补耗时，保留已确认的结果摘要。
 		const parent2 = new Container() as any;
 		const read = started("read", "sh-read", { path: "a.ts" });
 		read.updateResult({ content: [{ type: "text", text: "x" }], isError: false, durationMs: 5 });
@@ -693,8 +697,8 @@ test("组头列表用人性化名并恒带次数；组内 shell 行只报耗时"
 		parent2.addChild(read);
 		parent2.addChild(grep);
 		const rows2 = plain((parent2.children[0] as ToolGroupComponent).render(140));
-		assert.equal(rows2[1], " ├ ✓ Read a.ts");
-		assert.equal(rows2[2], ' └ ✓ Grep "x"');
+		assert.equal(rows2[1], " ├ ✓ Read a.ts · line 1");
+		assert.equal(rows2[2], ' └ ✓ Grep "x" in .');
 
 		// 窄宽度下先让出工具列表，保住行尾展开提示（鼠标层的命中锚点）。
 		const narrow = plain((parent.children[0] as ToolGroupComponent).render(72));

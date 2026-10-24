@@ -33,6 +33,7 @@ import {
 	toolCallSummary,
 	type ToolCallSummary,
 } from "./names.ts";
+import { FILE_PANEL_TOOL_NAMES, fileToolSummary } from "./file-tools.ts";
 import {
 	formatToolDuration,
 	headTruncateToWidth,
@@ -164,6 +165,14 @@ export function paddedBackgroundRow(
 }
 
 function toolSummary(tool: any): ToolCallSummary {
+	if (FILE_PANEL_TOOL_NAMES.has(toolName(tool)))
+		return fileToolSummary(
+			toolName(tool),
+			tool?.args ?? {},
+			tool?.result,
+			status(tool) === "success",
+			tool?.cwd,
+		);
 	return toolCallSummary(toolName(tool), tool?.args ?? {}, {
 		title: toolTitle(tool),
 		variant: "grouping",

@@ -5,6 +5,12 @@
 import { Text, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { config, getToolDisplayConfig } from "../../config/config.ts";
 import { bashOutputText, createBashCallComponent, createBashResultComponent } from "./bash.ts";
+import {
+	FILE_PANEL_TOOL_NAMES,
+	createFileToolCallComponent,
+	createFileToolResultComponent,
+	fileToolText,
+} from "./file-tools.ts";
 import { isToolCallHovered } from "../mouse/hover.ts";
 import {
 	ASK_USER_QUESTION_TOOL_NAME,
@@ -180,6 +186,9 @@ export function createCcstyleTool(
 			) {
 				context.state.ccstyleShellStartedAt = Date.now();
 			}
+
+			if (FILE_PANEL_TOOL_NAMES.has(toolName))
+				return createFileToolCallComponent(toolName, args, context, theme);
 
 			if (toolName === "bash") {
 				return createBashCallComponent({
@@ -370,6 +379,29 @@ export function createCcstyleTool(
 					isError,
 					isHovered: () => isToolCallHovered(toolCallId),
 				});
+			}
+			if (FILE_PANEL_TOOL_NAMES.has(toolName)) {
+				if (!options?.isPartial) setToolVisualState(context, isError ? "error" : "success");
+				if (expanded)
+					return renderExpandedToolResult(
+						fileToolText(result, true),
+						theme,
+						Boolean(isError),
+						context?.lastComponent,
+						context?.args,
+						context,
+						true,
+					);
+				if (context?.state) context.state.ccstyleIoView = undefined;
+				return createFileToolResultComponent(
+					toolName,
+					context?.args,
+					{ ...result, isError: Boolean(isError) },
+					theme,
+					Boolean(options?.isPartial),
+					showMoreHintText(),
+					() => isToolCallHovered(context?.toolCallId),
+				);
 			}
 			if (toolName === "bash") {
 				if (!options?.isPartial) {

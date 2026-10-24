@@ -250,7 +250,7 @@ function installGlobalToolRendering(
 			if (!patch.active) return patch.downstream.getRenderShell.apply(this, args);
 			const useCcstyle = shouldGloballyStyleTool(this);
 			const shell = useCcstyle
-				? this.expanded || this.toolName === "update_plan" || this.toolName === "bash"
+				? this.expanded || ["update_plan", "bash", "grep", "find", "read"].includes(this.toolName)
 					? "default"
 					: "self"
 				: patch.downstream.getRenderShell.apply(this, args);
@@ -367,7 +367,7 @@ function deactivateGlobalToolRendering(patch: GlobalToolRenderPatch): void {
 	}
 }
 
-/** 展开面板与独立计划/Bash面板按工具状态取中性/错误底色；普通折叠行保持原生状态色。 */
+/** 展开及独立工具面板按工具状态取中性/错误底色；普通折叠行保持原生状态色。 */
 export function installToolExpandedBackground(): () => void {
 	const previous = patchRegistry.get<ToolExpandedBackgroundPatch>(TOOL_EXPANDED_BACKGROUND_PATCH);
 	if (previous) previous.dispose();
@@ -380,7 +380,7 @@ export function installToolExpandedBackground(): () => void {
 			original.call(this);
 			if (
 				!patch.active ||
-				(!this.expanded && this.toolName !== "update_plan" && this.toolName !== "bash")
+				(!this.expanded && !["update_plan", "bash", "grep", "find", "read"].includes(this.toolName))
 			)
 				return;
 			const theme = getMessageDisplayTheme();
