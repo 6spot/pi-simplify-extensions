@@ -117,6 +117,20 @@ export function collapsedResultSummary(options: {
 	return `${outputLines} ${outputLines === 1 ? "line" : "lines"} ${action}`;
 }
 
+/** Shell 面板与分组共用：优先实际记录，历史结果不凭空创建计时起点。 */
+export function toolElapsedMs(context: any, isPartial: boolean): number | undefined {
+	const recorded = context?.durationMs;
+	if (!isPartial && typeof recorded === "number" && Number.isFinite(recorded) && recorded >= 0)
+		return recorded;
+	const seconds = context?.result?.structuredContent?.wall_time_seconds;
+	if (!isPartial && typeof seconds === "number" && Number.isFinite(seconds) && seconds >= 0)
+		return seconds * 1000;
+	const startedAt = context?.state?.ccstyleShellStartedAt;
+	if (typeof startedAt !== "number") return undefined;
+	const endedAt = context?.state?.ccstyleShellEndedAt;
+	return Math.max(0, (typeof endedAt === "number" ? endedAt : Date.now()) - startedAt);
+}
+
 /**
  * 工具耗时：不到 1 秒报毫秒，分钟级起带上分/时。
  * 只报到秒的话，几分钟的长命令会显示成 `300.0s`。

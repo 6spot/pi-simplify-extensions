@@ -21,7 +21,11 @@ function shellTool(name: string, id: string, args: Record<string, unknown> = {})
 }
 
 function render(component: any, width = 100): string[] {
-	return component.render(width).map(stripAnsi).filter(Boolean);
+	return component
+		.render(width)
+		.map(stripAnsi)
+		.map((line: string) => line.trimEnd())
+		.filter((line: string) => line.trim());
 }
 
 test("耗时格式：毫秒、秒、分、时", () => {
@@ -52,9 +56,10 @@ test("完成态：优先用 Pi 记录的 durationMs", () => {
 			durationMs: 1234,
 		});
 		const lines = render(tool);
-		assert.match(lines[0]!, /Bash npm test/);
+		assert.match(lines[0]!, /✓ Bash · 1\.2s/);
+		assert.match(lines[1]!, /\$ npm test/);
 		// 用记录值 1.2s，而不是时钟的 250ms
-		assert.match(lines[1]!, /3 lines returned · 1\.2s · .*to show more$/);
+		assert.doesNotMatch(lines.join("\n"), /250ms/);
 	} finally {
 		Date.now = originalNow;
 		hooks.shutdown();
@@ -72,7 +77,7 @@ test("完成态：没有 durationMs 时用渲染器自己的时钟", () => {
 		tool.render(100); // renderCall 记下开始时间
 		now = 6_234;
 		tool.updateResult({ content: [{ type: "text", text: "a\nb\nc" }], isError: false });
-		assert.match(render(tool)[1]!, /3 lines returned · 1\.2s · .*to show more$/);
+		assert.match(render(tool)[0]!, /✓ Bash · 1\.2s/);
 	} finally {
 		Date.now = originalNow;
 		hooks.shutdown();
@@ -91,14 +96,14 @@ test("运行中：shell 报已用时间，并且随重绘更新", async () => {
 		tool.updateResult({ content: [], isError: false }, true);
 
 		const running = render(tool);
-		assert.match(running[0]!, /^\s*○ Bash sleep 5/, "工具行用静态空心圆表示进行中");
-		assert.match(running[1]!, /Pending… · 0ms$/, "刚开跑报 0ms");
+		assert.match(running[0]!, /^\s*○ Bash · 0ms/, "工具行用静态空心圆表示进行中");
+		assert.match(running.join("\n"), /Waiting for output…/, "尚无输出时显示等待提示");
 
 		now = 1_250;
-		assert.match(render(tool)[1]!, /Pending… · 250ms$/, "时间推进后数字要跟着变");
+		assert.match(render(tool)[0]!, /Bash · 250ms$/, "时间推进后数字要跟着变");
 
 		now = 1_000 + 4_000;
-		assert.match(render(tool)[1]!, /Pending… · 4\.0s$/);
+		assert.match(render(tool)[0]!, /Bash · 4\.0s$/);
 	} finally {
 		Date.now = originalNow;
 		hooks.shutdown();
@@ -115,7 +120,7 @@ test("时钟回拨不输出负数", () => {
 		tool.render(100); // 开始时间 = 5000
 		tool.updateResult({ content: [], isError: false }, true);
 		Date.now = () => 0; // 回拨
-		assert.match(render(tool)[1]!, /Pending… · 0ms$/);
+		assert.match(render(tool)[0]!, /Bash · 0ms$/);
 	} finally {
 		Date.now = originalNow;
 		hooks.shutdown();
@@ -145,7 +150,7 @@ test("restore 出来的行没跑过，不报耗时", () => {
 		const tool = shellTool("bash", "sh-restored", { command: "ls" });
 		// 不调 markExecutionStarted：模拟从会话恢复
 		tool.updateResult({ content: [{ type: "text", text: "a" }], isError: false });
-		assert.doesNotMatch(render(tool)[1]!, /\d+(\.\d+)?(ms|s)\b/);
+		assert.doesNotMatch(render(tool)[0]!, /\d+(\.\d+)?(ms|s)\b/);
 	} finally {
 		hooks.shutdown();
 	}
@@ -161,13 +166,13 @@ test("restore 的行若带 durationMs，照旧报耗时", () => {
 			isError: false,
 			durationMs: 2_500,
 		});
-		assert.match(render(tool)[1]!, /2\.5s/);
+		assert.match(render(tool)[0]!, /2\.5s/);
 	} finally {
 		hooks.shutdown();
 	}
 });
 
-test("展开态：Output 截断时，耗时接在 show-more 行上、提示前", () => {
+test("Bash 展开态：耗时只显示在标题，Output 截断提示保留", () => {
 	const hooks = installDefaultMode(new WriteExecutionMetadataStore());
 	try {
 		const tool = shellTool("bash", "sh-expanded-trunc", { command: "npm test" });
@@ -185,10 +190,11 @@ test("展开态：Output 截断时，耗时接在 show-more 行上、提示前",
 			.map((l) => l.replace(/\s+$/g, ""))
 			.filter(Boolean);
 		const footer = lines.find((l: string) => /more lines/.test(l))!;
+		assert.match(lines[0]!, /✓ Bash · 29\.5s/);
 		assert.match(
 			footer,
-			/^\s*… 30 more lines · 29\.5s · .*to show more$/,
-			`耗时应在按钮前、计数不带 +: ${JSON.stringify(footer)}`,
+			/^\s*… 30 more lines · .*to show more$/,
+			`输出截断提示保留且不重复耗时: ${JSON.stringify(footer)}`,
 		);
 		// 不再单独占一行
 		assert.equal(
@@ -201,7 +207,7 @@ test("展开态：Output 截断时，耗时接在 show-more 行上、提示前",
 	}
 });
 
-test("展开态：Output 未截断时，耗时单独成行", () => {
+test("Bash 展开态：短 Output 保留正文，耗时只显示在标题", () => {
 	const hooks = installDefaultMode(new WriteExecutionMetadataStore());
 	try {
 		const tool = shellTool("bash", "sh-expanded-short", { command: "npm test" });
@@ -225,8 +231,8 @@ test("展开态：Output 未截断时，耗时单独成行", () => {
 			lines.some((l: string) => /pass 367/.test(l)),
 			"Output 正文应在",
 		);
-		// 与折叠态同一写法：裸值
-		assert.match(lines.at(-1)!, /^\s*1\.2s$/, `耗时应是最后一行: ${JSON.stringify(lines.at(-3))}`);
+		assert.match(lines[0]!, /✓ Bash · 1\.2s/);
+		assert.equal(lines.filter((line: string) => /1\.2s/.test(line)).length, 1);
 	} finally {
 		hooks.shutdown();
 	}

@@ -33,7 +33,12 @@ import {
 	toolCallSummary,
 	type ToolCallSummary,
 } from "./names.ts";
-import { formatToolDuration, headTruncateToWidth, toolViewportWidth } from "./result.ts";
+import {
+	formatToolDuration,
+	headTruncateToWidth,
+	toolViewportWidth,
+	toolElapsedMs,
+} from "./result.ts";
 import {
 	patchRegistry,
 	TOOL_GROUPING_GENERATION_KEY as GENERATION_KEY,
@@ -234,8 +239,15 @@ function shellResultTail(
 	fg: (color: string, text: string) => string,
 	toolStatus: ToolStatus,
 ): string {
-	if (!SHELL_TOOL_NAMES.has(toolName(tool)) || toolStatus === "pending" || !tool?.result) return "";
-	const durationMs = tool.result?.durationMs;
+	if (!SHELL_TOOL_NAMES.has(toolName(tool))) return "";
+	const bash = toolName(tool) === "bash";
+	if (!bash && (toolStatus === "pending" || !tool?.result)) return "";
+	const durationMs = bash
+		? toolElapsedMs(
+				tool.getRenderContext?.() ?? { result: tool.result, durationMs: tool.result?.durationMs },
+				toolStatus === "pending",
+			)
+		: tool.result?.durationMs;
 	const duration =
 		typeof durationMs === "number" && Number.isFinite(durationMs) && durationMs >= 0
 			? formatToolDuration(durationMs)

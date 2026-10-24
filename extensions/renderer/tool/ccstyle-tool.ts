@@ -4,6 +4,7 @@
  */
 import { Text, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { config, getToolDisplayConfig } from "../../config/config.ts";
+import { bashOutputText, createBashCallComponent, createBashResultComponent } from "./bash.ts";
 import { isToolCallHovered } from "../mouse/hover.ts";
 import {
 	ASK_USER_QUESTION_TOOL_NAME,
@@ -33,6 +34,7 @@ import {
 	renderCollapsedToolResultToWidth,
 	textFromResult,
 	toolViewportWidth,
+	toolElapsedMs,
 } from "./result.ts";
 import { hasExpandableDetail, isExpandedToolIoView, renderExpandedToolResult } from "./tool-io.ts";
 import {
@@ -142,23 +144,6 @@ function renderExpandedTaskResult(
 }
 
 /**
- * 工具耗时（毫秒）。结束时优先用 pi 记在结果上的 durationMs（单调，restore 出来的行也带得到）；
- * 运行中 pi 不给（partial 期间渲染上下文里恒为 undefined），退回 renderCall 记下的时钟。
- * 拿不到返回 undefined。时钟回拨时钳到 0。
- */
-function toolElapsedMs(context: any, isPartial: boolean): number | undefined {
-	const recorded = context?.durationMs;
-	if (!isPartial && typeof recorded === "number" && Number.isFinite(recorded) && recorded >= 0) {
-		return recorded;
-	}
-	const startedAt = context?.state?.ccstyleShellStartedAt;
-	if (typeof startedAt !== "number") return undefined;
-	const endedAt = context?.state?.ccstyleShellEndedAt;
-	const end = typeof endedAt === "number" ? endedAt : Date.now();
-	return Math.max(0, end - startedAt);
-}
-
-/**
  * shell 的耗时文本。Pi 原生 shell 渲染器会在结果底部报一行，ccstyle 的通用折叠行把它盖掉了。
  *
  * 两条路都要：新 Pi 在渲染上下文里给 `durationMs`（单调，restore 出来的行也带得到），优先用它；
@@ -194,6 +179,15 @@ export function createCcstyleTool(
 				context.state.ccstyleShellStartedAt === undefined
 			) {
 				context.state.ccstyleShellStartedAt = Date.now();
+			}
+
+			if (toolName === "bash") {
+				return createBashCallComponent({
+					args,
+					context,
+					theme,
+					elapsed: () => shellDurationText(toolName, context, Boolean(context?.isPartial)),
+				});
 			}
 
 			if (toolName === "update_plan" && context?.result && context?.isPartial === false) {
@@ -375,6 +369,32 @@ export function createCcstyleTool(
 					theme,
 					isError,
 					isHovered: () => isToolCallHovered(toolCallId),
+				});
+			}
+			if (toolName === "bash") {
+				if (!options?.isPartial) {
+					if (context?.state && context.state.ccstyleShellEndedAt === undefined)
+						context.state.ccstyleShellEndedAt = Date.now();
+					setToolVisualState(context, isError ? "error" : "success");
+				}
+				if (expanded)
+					return renderExpandedToolResult(
+						bashOutputText(result),
+						theme,
+						Boolean(isError),
+						context?.lastComponent,
+						context?.args,
+						context,
+						true,
+					);
+				if (context?.state) context.state.ccstyleIoView = undefined;
+				return createBashResultComponent({
+					args: context?.args,
+					result,
+					theme,
+					isPartial: Boolean(options?.isPartial),
+					hint: showMoreHintText(),
+					isHovered: () => isToolCallHovered(context?.toolCallId),
 				});
 			}
 			if (options?.isPartial) {
