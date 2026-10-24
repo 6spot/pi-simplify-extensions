@@ -3,6 +3,7 @@ import { StringEnum } from "@earendil-works/pi-ai";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { TaskManager, type TaskEvent, type TaskSnapshot } from "./tasks.ts";
+import { renderTaskNotices } from "./notices.ts";
 
 import { createTaskView } from "./view.ts";
 export { taskSummary } from "./view.ts";
@@ -66,6 +67,9 @@ export function registerTaskManager(
 						events: events.map(({ task, event }) => ({
 							id: task.id,
 							agent: task.agent,
+							task: task.task,
+							elapsed_ms: task.elapsed_ms,
+							error: task.error,
 							status: task.status,
 							...event,
 							...(terminal(task.status) ? { result: task.result } : {}),
@@ -155,21 +159,7 @@ export function registerTaskManager(
 		manager = undefined;
 		clearDelivery();
 	});
-	pi.registerMessageRenderer("subagent-events", (message, { expanded }, theme) => {
-		const events =
-			(
-				message.details as
-					| { events?: Array<{ agent: string; kind: string; message: string; result?: string }> }
-					| undefined
-			)?.events ?? [];
-		const text = events
-			.map(
-				(event) =>
-					`${theme.fg(event.kind === "completed" ? "success" : event.kind === "failed" ? "error" : event.kind === "cancelled" ? "dim" : "accent", event.kind === "completed" ? "✓" : event.kind === "failed" ? "✗" : event.kind === "cancelled" ? "–" : "○")} ${theme.fg("toolTitle", event.agent)} ${theme.fg("muted", event.kind)}\n${theme.fg("dim", expanded ? (event.result ?? event.message) : ["completed", "failed", "cancelled"].includes(event.kind) ? event.message : event.message.split("\n")[0])}`,
-			)
-			.join("\n");
-		return new Text(text, 0, 0);
-	});
+	pi.registerMessageRenderer("subagent-events", renderTaskNotices);
 	pi.registerTool({
 		name: "subagent_task",
 		label: "Subagent task",

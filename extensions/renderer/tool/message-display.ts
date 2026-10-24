@@ -148,6 +148,13 @@ export function installMessageDisplayRendering(): () => void {
 
 /** 三个消息组件共享的结构特征；CustomMessageComponent 用 rebuild 无 updateDisplay，不命中。 */
 export function isMessageDisplayComponent(value: any): boolean {
+	// Background notices own their expansion state and explicitly opt into this mouse contract.
+	if (
+		value?.[Symbol.for("simplify.subagent-notice-view")] === true &&
+		typeof value.setExpanded === "function" &&
+		typeof value.isCollapsedHintLine === "function"
+	)
+		return true;
 	return Boolean(
 		value &&
 			typeof value === "object" &&

@@ -338,7 +338,7 @@ const FULLSCREEN_VIEWPORT_PATCH = Symbol("ccstyle.fullscreen-viewport-patch");
  * 未声明的组件继续用文本规则。
  */
 function isCollapsedHintRow(component: any, finalLine: string, localRow?: number): boolean {
-	const result = component?.resultRendererComponent;
+	const result = component?.resultRendererComponent ?? component;
 	if (typeof result?.isCollapsedHintLine === "function")
 		return result.isCollapsedHintLine(finalLine, localRow);
 	return /(?:\((?:[^()\n]* \/ (?:click|to expand)|[^()\n]*, (?:[\w/+]+\s+)?to (?:expand|show more))\)|click to show more|to show more)\s*$/.test(
@@ -547,7 +547,8 @@ function handleFullscreenToolHover(tui: any, packet: SgrMousePacket): void {
 					target = { kind: "tool", component, view, section };
 				}
 			} else if (isMessageDisplayComponent(component)) {
-				if (overHint) target = { kind: "message", component };
+				if (overHint && isCollapsedHintRow(component, line, hit.localRow))
+					target = { kind: "message", component };
 			}
 		}
 	}

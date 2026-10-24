@@ -210,6 +210,11 @@ test("a busy parent receives the final result instead of obsolete progress and d
 			f.messages[0].message.details.events.map((event: any) => event.kind),
 			["completed"],
 		);
+		const delivered = f.messages[0].message.details.events[0];
+		assert.equal(delivered.task, task.task);
+		assert.equal(delivered.status, "completed");
+		assert.equal(delivered.elapsed_ms, f.manager.peek(task.id)!.elapsed_ms);
+		assert.equal(delivered.result, "Final title\nImportant final detail");
 		assert.doesNotMatch(f.messages[0].message.content, /An old question|Inputs inspected/);
 		const renderer = f.renderers.get("subagent-events");
 		const rendered = renderer(f.messages[0].message, { expanded: false }, f.ctx.ui.theme)

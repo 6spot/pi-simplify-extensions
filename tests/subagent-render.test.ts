@@ -63,13 +63,18 @@ test("Subagent native cards stay nonempty while running, expand structurally and
 				content: [{ type: "text", text: JSON.stringify(current) }],
 				details,
 			});
-			assert.match(render(), /Task: 检查中文路径/);
+			assert.match(render(), /├ Task[\s\S]*检查中文路径/);
 			assert.match(render(), /Waiting for first report/);
 			assert.match(render(), /ID: structured-task-id/);
 			assert.doesNotMatch(render(), /"backgroundTask"|"elapsed_ms"|"tasks"/);
 			for (const expanded of [false, true, false, true]) {
 				component.setExpanded(expanded);
-				assert.match(render(), /Task: 检查中文路径/);
+				assert.match(render(), /reader · 检查中文路径/);
+				assert.equal(
+					(render().match(/click to show more|↑ Collapse|ctrl\+o to (?:show more|collapse)/g) ?? [])
+						.length,
+					1,
+				);
 			}
 			definition.renderResult = (_result: unknown, options: { expanded: boolean }, theme: any) =>
 				createTaskView([snapshot()], theme, options.expanded, () =>
@@ -90,12 +95,12 @@ test("Subagent native cards stay nonempty while running, expand structurally and
 				"settled tool repaint reads new child data without invalidation",
 			);
 			current = { ...current, status: "completed", result: "最终结果\n第二个事实" };
-			assert.match(render(), /Result: 最终结果/);
+			assert.match(render(), /Result[\s\S]*最终结果/);
 			assert.match(render(), /第二个事实/);
 			for (const width of [22, 44, 110])
 				for (const line of component.render(width)) assert.ok(visibleWidth(line) <= width);
 			current = { ...current, status: "failed", error: "Actual process failure" };
-			assert.match(render(), /Error: Actual process failure/);
+			assert.match(render(), /Error[\s\S]*Actual process failure/);
 			current = { ...current, status: "cancelled", error: undefined, result: undefined };
 			assert.match(render(), /cancelled/);
 			available = false;
