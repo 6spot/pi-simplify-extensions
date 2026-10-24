@@ -43,7 +43,8 @@ import {
 	setToolVisualState,
 	toolIconColor,
 } from "./tool-state.ts";
-import { showMoreHintText } from "./names.ts";
+import { showMoreHintText, collapseHintText } from "./names.ts";
+import { createPlanResultComponent, planFromResult, planSummary } from "./plan.ts";
 
 /** `(+A -D)`：plain 用于占宽，styled 用于上屏。default 写标题与 compact edit/write 标题共用。 */
 export function styleChangeCounts(
@@ -205,6 +206,7 @@ export function createCcstyleTool(
 				variant: "default",
 				cwd: context?.cwd,
 			});
+			if (toolName === "update_plan") summary.payload = planSummary(args, context?.result, false);
 			// ask_user_question：问题原文在折叠结果树里逐条列出，标题只留工具名和问题数，
 			// 否则第一个问题会在标题和树里各出现一次。
 			if (toolName === ASK_USER_QUESTION_TOOL_NAME) {
@@ -244,6 +246,7 @@ export function createCcstyleTool(
 			let cachedLine: string | undefined;
 			let cachedIcon: string | undefined;
 			const expanded = Boolean(context?.expanded);
+			const framed = expanded || toolName === "update_plan";
 			return {
 				render(width: number) {
 					const icon = isPending ? pendingIconStyled() : settledIconStyled;
@@ -252,11 +255,8 @@ export function createCcstyleTool(
 					}
 					const viewportWidth = toolViewportWidth(width);
 					// 展开态贴左（外层 Box 已 pad 1）；折叠 self-shell 保留 1 格前导空格
-					const lead = expanded ? "" : " ";
-					const callWidth = Math.max(
-						0,
-						viewportWidth - visibleWidth(icon) - 1 - (expanded ? 0 : 1),
-					);
+					const lead = framed ? "" : " ";
+					const callWidth = Math.max(0, viewportWidth - visibleWidth(icon) - 1 - (framed ? 0 : 1));
 					const mainWidth = Math.max(0, callWidth - visibleWidth(extraText));
 					cachedWidth = width;
 					cachedIcon = icon;
@@ -273,6 +273,22 @@ export function createCcstyleTool(
 		renderResult(result: any, options: any, theme: any, context: any) {
 			const expanded = isToolExpanded(options, context);
 			const isError = Boolean(options?.isError || context?.isError);
+			if (toolName === "update_plan" && !isError && !result?.isError) {
+				const plan = planFromResult(result);
+				if (plan) {
+					if (!options?.isPartial) setToolVisualState(context, "success");
+					if (context?.state) context.state.ccstyleIoView = undefined;
+					return createPlanResultComponent({
+						plan,
+						args: context?.args,
+						theme,
+						expanded,
+						hint: expanded ? collapseHintText() : showMoreHintText(),
+						isHovered: () => isToolCallHovered(context?.toolCallId),
+						isGrouped: context?.isGrouped,
+					});
+				}
+			}
 			// codemode：折叠态自己画子调用树，展开态给全部子调用与去掉脚本头的输出
 			if (toolName === CODEMODE_TOOL_NAME) {
 				if (!options?.isPartial) setToolVisualState(context, isError ? "error" : "success");

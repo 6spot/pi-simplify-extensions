@@ -11,9 +11,11 @@ import {
 	GLOBAL_TOOL_RENDER_PATCH,
 	patchRegistry,
 	TOOL_EXPANDED_BACKGROUND_PATCH,
+	TOOL_GROUPING_PARENT_KEY,
 } from "../utils/patch-keys.ts";
 import { isToolCallHovered } from "./mouse/hover.ts";
 import { isLiveToolCall, toolCardBgSlot } from "./tool/tool-state.ts";
+import { ToolGroupComponent } from "./tool/grouping.ts";
 import { getMessageDisplayTheme } from "./tool/message-display.ts";
 import { createCcstyleTool } from "./tool/ccstyle-tool.ts";
 import type { WriteExecutionMetadataStore } from "./tool/diff/index.ts";
@@ -43,6 +45,7 @@ type ToolPaintHit = {
 	args: unknown;
 	callHover: boolean;
 	ioHover: string | null;
+	grouped: boolean;
 	lines: string[];
 };
 
@@ -190,7 +193,8 @@ function toolPaintMatches(hit: ToolPaintHit, tool: any, width: number): boolean 
 		hit.result === tool.result &&
 		hit.args === tool.args &&
 		hit.callHover === isToolCallHovered(tool.toolCallId) &&
-		hit.ioHover === ioHoverOf(tool)
+		hit.ioHover === ioHoverOf(tool) &&
+		hit.grouped === tool[TOOL_GROUPING_PARENT_KEY] instanceof ToolGroupComponent
 	);
 }
 
@@ -239,7 +243,7 @@ function installGlobalToolRendering(
 			if (!patch.active) return patch.downstream.getRenderShell.apply(this, args);
 			const useCcstyle = shouldGloballyStyleTool(this);
 			const shell = useCcstyle
-				? this.expanded
+				? this.expanded || this.toolName === "update_plan"
 					? "default"
 					: "self"
 				: patch.downstream.getRenderShell.apply(this, args);
@@ -264,10 +268,14 @@ function installGlobalToolRendering(
 	prototype.getRenderShell = patch.installed.getRenderShell;
 	prototype.getCallRenderer = patch.installed.getCallRenderer;
 	prototype.getResultRenderer = patch.installed.getResultRenderer;
-	// 渲染上下文没有 result。ask_user_question 的标题要报问题数，只能从这里补。
+	// 给专用展示补充结果与实时分组状态；普通容器同样有父指针，须识别真正的工具分组。
 	patch.getRenderContext = function (this: any, ...args: any[]) {
 		const context = originalGetRenderContext.apply(this, args);
-		if (context && typeof context === "object") context.result = this.result;
+		if (context && typeof context === "object") {
+			context.result = this.result;
+			if (this.toolName === "update_plan")
+				context.isGrouped = () => this[TOOL_GROUPING_PARENT_KEY] instanceof ToolGroupComponent;
+		}
 		return context;
 	};
 	prototype.getRenderContext = patch.getRenderContext;
@@ -295,6 +303,7 @@ function installGlobalToolRendering(
 				args: this.args,
 				callHover: isToolCallHovered(this.toolCallId),
 				ioHover: ioHoverOf(this),
+				grouped: this[TOOL_GROUPING_PARENT_KEY] instanceof ToolGroupComponent,
 				lines,
 			});
 		} else {
@@ -347,7 +356,7 @@ function deactivateGlobalToolRendering(patch: GlobalToolRenderPatch): void {
 	}
 }
 
-/** 展开面板背景按工具状态取槽位；折叠行保持原生状态色。 */
+/** 展开面板与独立计划面板按工具状态取中性/错误底色；普通折叠行保持原生状态色。 */
 export function installToolExpandedBackground(): () => void {
 	const previous = patchRegistry.get<ToolExpandedBackgroundPatch>(TOOL_EXPANDED_BACKGROUND_PATCH);
 	if (previous) previous.dispose();
@@ -358,7 +367,7 @@ export function installToolExpandedBackground(): () => void {
 		prototype,
 		installed: function (this: any) {
 			original.call(this);
-			if (!patch.active || !this.expanded) return;
+			if (!patch.active || (!this.expanded && this.toolName !== "update_plan")) return;
 			const theme = getMessageDisplayTheme();
 			if (!theme?.bg) return;
 			const box = this.contentBox;

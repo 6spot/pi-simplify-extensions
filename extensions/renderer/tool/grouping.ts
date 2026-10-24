@@ -8,6 +8,7 @@ import {
 } from "@earendil-works/pi-tui";
 import { config } from "../../config/config.ts";
 import { aggregateToolCardBgSlot, toolCardStatus } from "./tool-state.ts";
+import { planSummary } from "./plan.ts";
 import {
 	ASK_USER_QUESTION_TOOL_NAME,
 	askUserAnswerText,
@@ -203,6 +204,16 @@ function askUserResultSummary(tool: any): ToolCallSummary | undefined {
 	};
 }
 
+function planResultSummary(tool: any): ToolCallSummary | undefined {
+	if (toolName(tool).toLowerCase() !== "update_plan") return;
+	return {
+		main: toolTitle(tool),
+		detail: "",
+		payload:
+			planSummary(tool.args, tool.result) ?? (tool.result ? "Result available" : "Updating plan"),
+	};
+}
+
 function codemodeResultSummary(tool: any): ToolCallSummary | undefined {
 	if (toolName(tool) !== CODEMODE_TOOL_NAME || !tool?.result) return undefined;
 	const parts = codemodeSummaryParts(
@@ -241,7 +252,11 @@ function collapsedGroupToolLine(
 ): string {
 	const toolStatus = status(tool);
 	const color = toolStatus === "pending" ? "accent" : toolStatus;
-	const summary = askUserResultSummary(tool) ?? codemodeResultSummary(tool) ?? toolSummary(tool);
+	const summary =
+		planResultSummary(tool) ??
+		askUserResultSummary(tool) ??
+		codemodeResultSummary(tool) ??
+		toolSummary(tool);
 	const prefix = ` ${fg("dim", last ? "└" : "├")} ${fg(color, statusIcon(toolStatus))} `;
 	const detail = fg("dim", summary.detail);
 	const result = shellResultTail(tool, fg, toolStatus);

@@ -4,6 +4,7 @@ import { getKeybindings, visibleWidth } from "@earendil-works/pi-tui";
 import { config } from "../../config/config.ts";
 import { oneLine } from "../../utils/format.ts";
 import { headTruncateToWidth } from "./result.ts";
+import { planSummary } from "./plan.ts";
 
 /** toolLabelClip=0 时不设字符上限，交给渲染时的实际宽度截断。 */
 function clipLimit(): number {
@@ -258,6 +259,7 @@ export function toolCallSummary(
 	// 内置 codemode：标题只报工具名。脚本很长，塞进行首既挤又读不出重点；
 	// 要看代码展开 Input，要看跑了什么看子调用行。
 	if (name === "codemode") return { main: title, detail: "" };
+	if (name === "update_plan") return { main: title, detail: "", payload: planSummary(args) };
 
 	const value = (fallback: string, ...keys: string[]) => {
 		const found = keys.map((key) => args[key]).find((item) => typeof item === "string" && item);
