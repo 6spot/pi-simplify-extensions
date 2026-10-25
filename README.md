@@ -2,6 +2,10 @@
 
 个人使用的 Pi TUI 展示扩展，基于 [minuque/pi-cc-extensions](https://github.com/minuque/pi-cc-extensions) 精简。
 
+## 工具卡规范草案
+
+[工具卡展示规范 v1（草案）](docs/tool-card-spec.md) 统一讨论身份、状态、层级、内容预览、隐藏说明和展开操作，并提供独立/分组、运行/完成的对照示例。草案待评审，尚未实施；下文描述的仍是当前功能。规范确认后再按共同规则开发。
+
 ## 保留的功能
 
 - Claude Code 风格工具卡、工具分组、点击展开与收起、Rich Diff
