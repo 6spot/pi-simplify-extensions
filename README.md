@@ -40,7 +40,7 @@ Update Plan、Bash、Grep、Find、Read、Subagent 和 Subagent Task 独立卡�
 
 Subagent 的同步单任务、并行、链式和后台任务使用一致的紧凑卡片：标题显示角色、短任务、真实状态及可用耗时，运行中只预览一行最新进展，终态最多三行结果或错误。执行记录和用量放入展开详情，不在收起时重复派发标题或铺开最近多条执行记录。同步进程记录真实运行与结束状态，旧历史没有耗时时省略；重载或恢复会话后，已有子任务卡也会应用当前渲染。
 
-展开与收起提示按工具结构放在行内，全屏模式统一使用 `Expand` / `Collapse`：Read、Grep、Find、Bash、Update Plan、Subagent 放在标题末尾；Edit、Write Diff 保留在末尾的差异摘要之后。Read 的 `More available · offset=…` 继续单独表示下一次读取位置。Read、Grep、Find、Bash 的标题在窄屏下优先为完整操作提示留出空间，过窄时省略提示，仍可使用配置的展开快捷键。
+工具卡规范中的展开/收起操作统一固定在标题末尾，包含 Edit、Write Diff，运行、完成、失败及展开状态均不改变操作所在行；增删统计放标题元信息，底部只保留省略或限制说明。该修正规则仍待整套样式确认后实施，当前渲染源码尚未调整。Fullscreen 文案继续使用 `Expand` / `Collapse`。Read 的 `More available · offset=…` 单独表示下一次读取位置；窄屏优先为完整操作提示留出空间，过窄时省略提示，仍可使用配置的展开快捷键。
 
 TUI 的正文背景由终端决定，主题中的页面底色用于 HTML 导出。Shell 输入目前按整段输入着色，已有代码高亮继续保留，不额外解析 Shell 语法。
 

@@ -46,7 +46,7 @@ Skill 加载消息、后台 widget 和终态通知属于辅助展示，不增加
 - `Expand` 表示有详情；省略提示说明预览损失；执行截断/续读说明来源限制。三个判断独立。
 - 数量可信时才显示 `N more lines/paths/steps`，否则显示 `More output hidden` 等诚实说明。
 - 预算按终端可见行计算；窄屏保留真实状态、工具身份和操作，优先截短对象及辅助信息。
-- 默认操作在标题末尾；有真实 Diff 时放差异摘要末尾。没有 Diff 的运行/错误/普通结果卡仍使用标题操作，同一状态只出现一个入口。
+- 所有卡片的 `Expand` / `Collapse` 统一放在标题末尾，包括 Edit/Write Diff；运行、成功、失败以及展开/收起均不改变操作所在行。增删统计放标题元信息，底部只保留内容省略/限制说明。分组子项复用父容器入口，不重复加按钮。
 - 折叠预算统一为：对象/输入摘要最多 2 行；普通结果最多 4 行；计划最多 6 步；单个 Subagent 最新 1 行进展或最多 3 行终态结论；多任务最多 4 项，每项最多 1 行进展/结论；Multiple Tools/Codemode 最多 6 个子项。
 - 容器嵌套按全部可见子项计预算，不逐层重新增加 6 项；达到预算就给出明确的剩余项提示。原生 Diff/图片使用专用预算和相同披露规则。
 
@@ -161,7 +161,7 @@ PowerShell 使用自己的工具名称，结构相同。空输出明确显示 `N
 
 ## 5. 文件变更：Edit / Write
 
-尚无实际 Diff 的运行态：
+运行态：
 
 ```text
 ○ Edit · 1.2s · Expand
@@ -169,31 +169,37 @@ PowerShell 使用自己的工具名称，结构相同。空输出明确显示 `N
   Applying changes…
 ```
 
-成功，已有真实 Diff：
+成功，已有真实 Diff，操作仍在标题末尾：
 
 ```text
-✓ Edit · 2.4s
+✓ Edit · +24 −8 · 2.4s · Expand
   src/app.ts
   - const layout = "cards";
   + const layout = "sections";
   … 2 more hunks
-  +24 −8 · Expand
 ```
 
 Write 新文件：
 
 ```text
-✓ Write · 1.8s
+✓ Write · +120 −0 · 1.8s · Expand
   src/section.ts
   + export function section() {
   +   return {
   +     title: "Overview",
   +     layout: "rows",
   … 116 more added lines
-  +120 −0 · Expand
 ```
 
-Diff 保留已有语法高亮、增删层次、宽屏拆分/窄屏降级和合理预算，不强制变成纯 4 行正文。有真实且完整的统计才能显示增删/块数。缺少安全快照、无法比较或执行失败时使用标题带展开入口的普通结果视图，保留真实结果，不补造 Diff 或变化统计。
+展开后仍在标题操作，只将 `Expand` 改为 `Collapse`：
+
+```text
+✓ Edit · +24 −8 · 2.4s · Collapse
+  src/app.ts
+  [已有展开 Diff，保留真实高亮、布局及必要限制说明]
+```
+
+Diff 保留已有语法高亮、增删层次、宽屏拆分/窄屏降级和合理预算，不强制变成纯 4 行正文。有真实且完整的统计才能显示增删/块数。缺少安全快照、无法比较或执行失败时使用同样在标题操作的普通结果视图，保留真实结果，不补造 Diff 或变化统计。
 
 ## 6. 计划进度：Update Plan
 
