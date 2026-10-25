@@ -96,7 +96,7 @@ test("restored plan cards rebuild their display once when rendering is installed
 	let reloaded: ReturnType<typeof installDefaultMode> | undefined;
 	try {
 		let view = render(tool);
-		assert.match(view, /○ Update Plan 1\/3 done/);
+		assert.match(view, /○ Update Plan · 1\/3 done/);
 		assert.match(view, /✓ 检查中文路径/);
 		assert.doesNotMatch(view, /"steps"|sol-pi-plan|"progress"/);
 		assert.equal(rebuilds, 1, "rebuild the native display created before installation");
@@ -120,7 +120,7 @@ test("restored plan cards rebuild their display once when rendering is installed
 		};
 		reloaded = installDefaultMode(new WriteExecutionMetadataStore());
 		view = render(restored);
-		assert.match(view, /✓ Update Plan 3\/3 done/);
+		assert.match(view, /✓ Update Plan · 3\/3 done/);
 		assert.match(view, /原始决策保留在展开视图/);
 		assert.doesNotMatch(view, /"steps"|sol-pi-plan/);
 		assert.equal(restoredRebuilds, 1, "refresh the restored component for the new installation");
@@ -156,7 +156,8 @@ test("streamed plan arguments appear before results without claiming accepted co
 		});
 		assert.match(render(tool), /· 收到的预览步骤/);
 		assert.match(render(tool), /· 接收中的步骤/);
-		assert.doesNotMatch(render(tool), /done|✓|Expand/);
+		assert.doesNotMatch(render(tool), /done|✓/);
+		assert.equal(render(tool).match(/Expand/g)?.length, 1);
 		tool.markExecutionStarted();
 		tool.updateResult({ content: [] }, true);
 		assert.match(render(tool), /· 收到的预览步骤/);
@@ -166,11 +167,11 @@ test("streamed plan arguments appear before results without claiming accepted co
 			steps: steps().map((step) => ({ ...step, status: "completed" })),
 		});
 		tool.updateResult(result());
-		assert.match(render(tool), /○ Update Plan 1\/3 done/);
-		assert.match(render(tool), /○ 实现计划面板/);
+		assert.match(render(tool), /○ Update Plan · 1\/3 done/);
+		assert.match(render(tool), /→ 实现计划面板/);
 		assert.doesNotMatch(render(tool), /✓ Update Plan|收到的预览步骤|Receiving plan…/);
 		tool.updateResult(result(steps().map((step) => ({ ...step, status: "completed" }))));
-		assert.match(render(tool), /✓ Update Plan 3\/3 done/);
+		assert.match(render(tool), /✓ Update Plan · 3\/3 done/);
 		tool.updateResult({
 			content: [{ type: "text", text: "Plan update was aborted" }],
 			isError: true,
@@ -208,13 +209,13 @@ test("standalone plan is transparent until expanded; partial/completed updates, 
 		assert.match(render(tool), /实现计划面板/);
 		tool.updateResult(accepted, false);
 		const collapsed = render(tool);
-		assert.match(collapsed, /○ Update Plan 1\/3 done/);
+		assert.match(collapsed, /○ Update Plan · 1\/3 done/);
 		for (const goal of steps().map((step) => step.goal)) assert.ok(collapsed.includes(goal));
 		assert.doesNotMatch(collapsed, /sol-pi-plan|"progress"|"steps"|lines returned|Decisions/);
 		assert.equal(slots.length, 0, "collapsed plans have no background");
 		const hintLines = collapsed.split("\n").filter((line: string) => line.includes("Expand"));
 		assert.equal(hintLines.length, 1);
-		assert.match(hintLines[0], /Update Plan 1\/3 done · Expand/);
+		assert.match(hintLines[0], /Update Plan · 1\/3 done · Expand/);
 		tool.setExpanded(true);
 		assert.match(
 			render(tool)
@@ -273,7 +274,7 @@ test("grouped update_plan stays lightweight, reflects accepted result, refreshes
 		assert.ok(group instanceof ToolGroupComponent, "plan remains groupable alongside other tools");
 		const collapsed = render(group);
 		assert.match(collapsed, /✓ Update Plan 1\/3 done · 实现计划面板/);
-		assert.match(collapsed, /Multiple Tools: 2 done/);
+		assert.match(collapsed, /Multiple Tools · 2 done/);
 		assert.doesNotMatch(collapsed, /"progress"|"decisions"|sol-pi-plan|检查中文路径/);
 		group.setExpanded(true);
 		assert.match(render(group), /检查中文路径/);
@@ -285,7 +286,7 @@ test("grouped update_plan stays lightweight, reflects accepted result, refreshes
 		group.removeTool(plan);
 		const standaloneParent = new Container();
 		standaloneParent.addChild(plan);
-		assert.match(render(plan), /○ Update Plan 1\/3 done/);
+		assert.match(render(plan), /○ Update Plan · 1\/3 done/);
 		assert.match(
 			render(plan),
 			/Decisions/,

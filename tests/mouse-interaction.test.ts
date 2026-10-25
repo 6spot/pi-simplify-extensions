@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-
 import { ToolExecutionComponent, initTheme } from "@earendil-works/pi-coding-agent";
 import { Container, visibleWidth, type Component } from "@earendil-works/pi-tui";
 import { createJiti } from "jiti";
@@ -17,11 +16,12 @@ import {
 } from "../extensions/renderer/tool/diff/index.ts";
 import { WriteExecutionMetadataStore } from "../extensions/renderer/tool/diff/write-execution.ts";
 import { formatToolInputBody } from "../extensions/renderer/tool/tool-io.ts";
+import { titleControlComponent } from "../extensions/renderer/tool/card-header.ts";
 import { insetComponent } from "../extensions/renderer/tool/result.ts";
 
 initTheme("dark");
 
-test("tool groups expand from their hint and collapse from any expanded group row", async () => {
+test("tool groups expand and collapse only from their title controls", async () => {
 	const grouping = installToolGrouping(() => true);
 	grouping.setTheme({
 		fg: (color: string, text: string) => (color === "text" ? `\x1b[37m${text}\x1b[39m` : text),
@@ -108,13 +108,17 @@ test("tool groups expand from their hint and collapse from any expanded group ro
 		const bottomPaddingRow = tui.previousLines.length - 1;
 		assert.equal(tui.previousLines[bottomPaddingRow].trim(), "");
 		// 按下只记账，松手位置不变才算单击；拖动（松手位置不同）保持展开。
-		assert.equal(inputHandler?.(`\x1b[<0;100;${bottomPaddingRow + 1}M`)?.consume, true);
+		assert.equal(inputHandler?.(`\x1b[<0;100;${bottomPaddingRow + 1}M`)?.consume, undefined);
 		assert.equal(group.expanded, true, "press alone does not collapse");
 		inputHandler?.(`\x1b[<0;100;${bottomPaddingRow + 4}m`);
 		assert.equal(group.expanded, true, "drag release keeps the group expanded");
 		inputHandler?.(`\x1b[<0;100;${bottomPaddingRow + 1}M`);
 		inputHandler?.(`\x1b[<0;100;${bottomPaddingRow + 1}m`);
-		assert.equal(group.expanded, false, "single click collapses the group");
+		assert.equal(group.expanded, true, "body and padding clicks keep the group expanded");
+		inputHandler?.(`\x1b[<0;${collapseCol};2M`);
+		assert.equal(group.expanded, true, "title press waits for release");
+		inputHandler?.(`\x1b[<0;${collapseCol};2m`);
+		assert.equal(group.expanded, false, "title control click collapses the group");
 	} finally {
 		installToolMouseInteraction({});
 		grouping.shutdown();
@@ -311,18 +315,16 @@ test("show-more hover targets the view rendered in the current frame after compa
 	installToolMouseInteraction(interactionCtx);
 	try {
 		tui.doRender();
-		const footerRow = tui.previousLines.findIndex(
-			(line: string) => line.includes("more lines") && line.includes("to show more"),
-		);
-		assert.ok(footerRow >= 0, "truncated body paints a show-more footer");
-		const col = tui.previousLines[footerRow].indexOf("to show more") + 1;
+		const footerRow = tui.previousLines.findIndex((line: string) => line.includes("Open preview"));
+		assert.ok(footerRow >= 0, "truncated section paints a preview title control");
+		const col = tui.previousLines[footerRow].indexOf("Open preview") + 1;
 		tui.handleInput(`\x1b[<35;${col};${footerRow + 1}M`);
 		assert.match(
-			currentView.render(78).find((line) => line.includes("more lines")) ?? "",
+			currentView.render(78).find((line) => line.includes("Open preview")) ?? "",
 			/\x1b\[97m/,
 		);
 		assert.doesNotMatch(
-			staleView.render(78).find((line) => line.includes("more lines")) ?? "",
+			staleView.render(78).find((line) => line.includes("Open preview")) ?? "",
 			/\x1b\[97m/,
 		);
 	} finally {
@@ -420,11 +422,11 @@ test("expanded tool group show-more opens preview instead of collapsing the grou
 			},
 		});
 		tui.doRender();
-		const showMoreRow = tui.previousLines.findIndex(
-			(line: string) => line.includes("more lines") && line.includes("to show more"),
+		const showMoreRow = tui.previousLines.findIndex((line: string) =>
+			line.includes("Open preview"),
 		);
-		assert.ok(showMoreRow >= 0, "expanded group must paint a show-more affordance");
-		const col = tui.previousLines[showMoreRow].indexOf("to show more") + 1;
+		assert.ok(showMoreRow >= 0, "expanded group must paint a preview title control");
+		const col = tui.previousLines[showMoreRow].indexOf("Open preview") + 1;
 		inputHandler?.(`\x1b[<35;${col};${showMoreRow + 1}M`);
 		const beforeExpanded = group.expanded;
 		assert.equal(inputHandler?.(`\x1b[<0;${col};${showMoreRow + 1}M`)?.consume, true);
@@ -525,15 +527,19 @@ test("codemode Input show-more 预览带 js 围栏（弹框按 Markdown 着色�
 		});
 		tui.doRender();
 		const showMoreRow = tui.previousLines.findIndex(
-			(line: string) => line.includes("more lines") && line.includes("to show more"),
+			(line: string) => line.includes("Input") && line.includes("Open preview"),
 		);
-		assert.ok(showMoreRow >= 0, "Input 截断后应有 show-more 入口");
-		const col = tui.previousLines[showMoreRow].indexOf("to show more") + 1;
+		assert.ok(showMoreRow >= 0, "Input 截断后标题应有预览入口");
+		const col = tui.previousLines[showMoreRow].indexOf("Open preview") + 1;
 		assert.equal(inputHandler?.(`\x1b[<0;${col};${showMoreRow + 1}M`)?.consume, true);
 		// pi 的 Markdown 用完整语言名渲染围栏，并用 highlightCode 给代码行上色
 		const fenced = opened.find((body) => body.includes("```javascript"));
 		assert.ok(fenced, `Input 预览应带 javascript 围栏，实际: ${JSON.stringify(opened)}`);
-		assert.match(fenced!, /\x1b\[38;(?:2;\d+;\d+;\d+|5;\d+)mconst\x1b\[39m a =/, "围栏内代码着语法色");
+		assert.match(
+			fenced!,
+			/\x1b\[38;(?:2;\d+;\d+;\d+|5;\d+)mconst\x1b\[39m a =/,
+			"围栏内代码着语法色",
+		);
 		assert.ok(!fenced!.includes("code:"), "预览正文不带 code: 标签");
 	} finally {
 		installToolMouseInteraction({});
@@ -541,7 +547,7 @@ test("codemode Input show-more 预览带 js 围栏（弹框按 Markdown 着色�
 	}
 });
 
-test("collapsed diff card swallows card-wide clicks outside its remainder row", () => {
+test("diff title controls ignore passive remainder rows and body text that resembles a control", () => {
 	// 伪造 pi 0.87 的结果区 MouseRegion：左键 click 整卡 setExpanded。
 	const prototype = (ToolExecutionComponent as any).prototype;
 	const originalHandleMouse = prototype.handleMouse;
@@ -569,16 +575,23 @@ test("collapsed diff card swallows card-wide clicks outside its remainder row", 
 		{ ...DEFAULT_TOOL_DISPLAY_CONFIG, editDiffCollapsedLines: 2 },
 	);
 	const result = insetComponent(inner);
+	const callView = titleControlComponent({
+		render: (_width: number) => ["✓ Edit · Expand"],
+		invalidate() {},
+	});
 	const card: any = {
 		toolName: "edit",
 		expanded: false,
+		callRendererComponent: callView,
 		resultRendererComponent: result,
-		render: (width: number) => ["✓ Edit a.ts", ...result.render(width)],
+		render: (width: number) => [...callView.render(width), ...result.render(width)],
 	};
 	const strip = (line: string) => line.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "");
 	const rows = (card.render(80) as string[]).map(strip);
 	const bodyRow = rows.findIndex((line: string) => line.includes("2 lines returned"));
-	const hintRow = rows.findIndex((line: string) => line.includes("more diff lines"));
+	const hintRow = rows.findIndex((line: string) =>
+		/more diff lines|More changes hidden/.test(line),
+	);
 	assert.ok(bodyRow >= 0 && hintRow >= 0, "collapsed diff renders body and remainder");
 	const tui = {
 		terminal: { columns: 80, write() {} },
@@ -603,8 +616,10 @@ test("collapsed diff card swallows card-wide clicks outside its remainder row", 
 		assert.deepEqual(delegated, [], "正文行不能交给官方整卡 toggle");
 
 		prototype.handleMouse.call(card, { type: "click", button: "left", y: hintRow, width: 80 });
-		assert.equal(delegated.length, 1, "remainder 行仍走官方 toggle");
-		assert.deepEqual(delegated[0], { type: "click", button: "left", y: hintRow });
+		assert.equal(delegated.length, 0, "remainder is passive");
+		prototype.handleMouse.call(card, { type: "click", button: "left", y: 0, width: 80 });
+		assert.equal(delegated.length, 1, "only the title control reaches native toggle");
+		assert.deepEqual(delegated[0], { type: "click", button: "left", y: 0 });
 
 		prototype.handleMouse.call(card, { type: "wheel", button: "none", y: bodyRow, width: 80 });
 		const expandedCard: any = {
@@ -622,7 +637,7 @@ test("collapsed diff card swallows card-wide clicks outside its remainder row", 
 			width: 80,
 		});
 		assert.equal(delegated.length, 2, "wheel 仍走官方；展开卡 click 由扩展接管收起");
-		assert.equal(expandedCard.expanded, false, "展开卡单击收起");
+		assert.equal(expandedCard.expanded, true, "expanded body clicks keep the card open");
 	} finally {
 		installToolMouseInteraction({});
 		prototype.handleMouse = originalHandleMouse;
@@ -860,9 +875,7 @@ test("expanded group identical show-more labels open their own content", () => {
 			"markers must not leak into previousLines",
 		);
 		const showMoreRows = tui.previousLines
-			.map((line, index) =>
-				line.includes("more lines") && line.includes("to show more") ? index : -1,
-			)
+			.map((line, index) => (line.includes("Open preview") ? index : -1))
 			.filter((index) => index >= 0);
 		assert.ok(showMoreRows.length >= 2, "need two identical show-more footers");
 		const plainLabels = showMoreRows.map((row) =>
@@ -874,7 +887,7 @@ test("expanded group identical show-more labels open their own content", () => {
 		assert.equal(plainLabels[0], plainLabels[1], "labels must be text-identical");
 
 		const secondRow = showMoreRows[1];
-		const col = tui.previousLines[secondRow].indexOf("to show more") + 1;
+		const col = tui.previousLines[secondRow].indexOf("Open preview") + 1;
 		assert.equal(inputHandler?.(`\x1b[<0;${col};${secondRow + 1}M`)?.consume, true);
 		assert.ok(
 			opened.some((text) => text.includes("UNIQUE_B_CONTENT")),
@@ -889,4 +902,3 @@ test("expanded group identical show-more labels open their own content", () => {
 		grouping.shutdown();
 	}
 });
-

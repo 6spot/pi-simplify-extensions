@@ -21,13 +21,20 @@ import {
 import {
 	CODEMODE_TOOL_NAME,
 	codemodeExpandedBody,
+	codemodeCalls,
+	codemodeSummaryParts,
 	createCodemodeResultComponent,
 } from "./codemode.ts";
-import { countWriteDiffStats, writeStatsInCollapsedBody } from "./diff/diff-renderer.ts";
+import { countEditDiffStats, countWriteDiffStats } from "./diff/diff-renderer.ts";
+import { boundedTextPreview } from "./preview.ts";
+import { toolCardFamily } from "./card-family.ts";
+import { titleControlComponent } from "./card-header.ts";
+import { argumentPreview } from "../../utils/argument-preview.ts";
 import { renderRichToolResult, type WriteExecutionMetadataStore } from "./diff/index.ts";
 import { mcpToolTitle } from "./mcp-title.ts";
 import {
 	humanizeToolLabel,
+	renderToolHeaderToWidth,
 	renderToolSummary,
 	SHELL_TOOL_NAMES,
 	toolCallSummary,
@@ -39,10 +46,16 @@ import {
 	insetComponent,
 	renderCollapsedToolResultToWidth,
 	textFromResult,
+	resultTextView,
 	toolViewportWidth,
 	toolElapsedMs,
 } from "./result.ts";
-import { hasExpandableDetail, isExpandedToolIoView, renderExpandedToolResult } from "./tool-io.ts";
+import {
+	hasExpandableDetail,
+	hasExpandableResult,
+	isExpandedToolIoView,
+	renderExpandedToolResult,
+} from "./tool-io.ts";
 import {
 	isToolExpanded,
 	pendingIcon,
@@ -50,6 +63,7 @@ import {
 	settledIcon,
 	setToolVisualState,
 	toolIconColor,
+	toolCardStatus,
 } from "./tool-state.ts";
 import { showMoreHintText, collapseHintText } from "./names.ts";
 import {
@@ -66,8 +80,8 @@ export function styleChangeCounts(
 	removed: number,
 ): { text: string; styled: string } {
 	return {
-		text: ` (+${added} -${removed})`,
-		styled: ` ${fg("dim", "(")}${fg("success", `+${added}`)} ${fg("error", `-${removed}`)}${fg("dim", ")")}`,
+		text: ` · +${added} −${removed}`,
+		styled: `${fg("dim", " · ")}${fg("success", `+${added}`)} ${fg("error", `−${removed}`)}`,
 	};
 }
 
@@ -171,14 +185,60 @@ export function createCcstyleTool(
 	const label = originalTool.label || toolName;
 	const defaultTitle = label === toolName ? humanizeToolLabel(label) : label;
 	// MCP 工具直接用 adapter 暴露的真实工具名，不做人性化
-	const title = mcpToolTitle({ toolName, definition: originalTool }) ?? defaultTitle;
+	const mcpTitle = mcpToolTitle({ toolName, definition: originalTool });
+	const family = toolCardFamily(toolName, originalTool);
+	const generic =
+		family === "generic" ||
+		(family === "task" &&
+			typeof originalTool.renderCall !== "function" &&
+			typeof originalTool.renderResult !== "function");
+	const title = mcpTitle
+		? mcpTitle.startsWith("MCP")
+			? mcpTitle
+			: `MCP · ${mcpTitle}`
+		: generic
+			? `Tool · ${toolName}`
+			: toolName === ASK_USER_QUESTION_TOOL_NAME
+				? "Question"
+				: defaultTitle;
 
 	return {
 		...originalTool,
 		renderShell: "self",
 		renderCall(args: any, theme: any, context: any) {
+			context = { ...context, lastComponent: undefined };
+			if (!context.expanded && !context.result && context.state)
+				context.state.ccstyleIoView = undefined;
+			const expanded = Boolean(context.expanded);
+			const waitingView =
+				expanded && !context.result && (generic || toolName !== "update_plan")
+					? renderExpandedToolResult(
+							context.executionStarted ? "Waiting for output…" : "Receiving arguments…",
+							theme,
+							false,
+							context.state?.ccstyleIoView,
+							args,
+							context,
+							true,
+						)
+					: undefined;
+			const framedCall = (view: any) =>
+				titleControlComponent(
+					waitingView
+						? {
+								render(width: number) {
+									return [...view.render(width), ...waitingView.render(width)];
+								},
+								invalidate() {
+									view.invalidate?.();
+									waitingView.invalidate?.();
+								},
+							}
+						: view,
+				);
 			// shell 的耗时从执行开始算；restore 出来的行没有 executionStarted，不参与。
 			if (
+				!generic &&
 				SHELL_TOOL_NAMES.has(toolName) &&
 				context?.executionStarted &&
 				context.state &&
@@ -187,71 +247,149 @@ export function createCcstyleTool(
 				context.state.ccstyleShellStartedAt = Date.now();
 			}
 
-			if (FILE_PANEL_TOOL_NAMES.has(toolName))
-				return createFileToolCallComponent(toolName, args, context, theme, () =>
-					isToolCallHovered(context?.toolCallId),
+			if (!generic && FILE_PANEL_TOOL_NAMES.has(toolName))
+				return framedCall(
+					createFileToolCallComponent(
+						toolName,
+						args,
+						context,
+						theme,
+						() => isToolCallHovered(context?.toolCallId),
+						!waitingView,
+					),
 				);
 
-			if (toolName === "bash") {
-				return createBashCallComponent({
-					args,
-					context,
-					theme,
-					elapsed: () => shellDurationText(toolName, context, Boolean(context?.isPartial)),
-					isHovered: () => isToolCallHovered(context?.toolCallId),
-				});
+			if (!generic && SHELL_TOOL_NAMES.has(toolName)) {
+				return framedCall(
+					createBashCallComponent({
+						showInput: !waitingView,
+						toolName,
+						args,
+						context,
+						theme,
+						elapsed: () => shellDurationText(toolName, context, Boolean(context?.isPartial)),
+						isHovered: () => isToolCallHovered(context?.toolCallId),
+					}),
+				);
 			}
 
-			if (toolName === "update_plan" && context?.result && context?.isPartial === false) {
+			if (
+				!generic &&
+				toolName === "update_plan" &&
+				context?.result &&
+				context?.isPartial === false
+			) {
 				setToolVisualState(
 					context,
 					context.isError || context.result.isError ? "error" : "success",
 				);
 			}
-			const visualState = resolveToolVisualState(context);
+			const visualState =
+				toolName === CODEMODE_TOOL_NAME && !generic
+					? toolCardStatus({
+							toolName,
+							result: context?.result,
+							isPartial: context?.isPartial,
+							isError: context?.isError,
+						})
+					: resolveToolVisualState(context);
 			const isPending =
+				!context?.result ||
+				context?.isPartial === true ||
 				visualState === "pending" ||
 				(!visualState && (context?.isPartial || context?.executionStarted));
 			let settledRawIcon = isPending ? "" : settledIcon(toolName, visualState);
 			// Codemode 展开为子调用树，成功容器标题与工具分组统一；子项仍用勾。
-			if (toolName === CODEMODE_TOOL_NAME && visualState === "success") settledRawIcon = "●";
+			const codemodeFailed =
+				!generic &&
+				toolName === CODEMODE_TOOL_NAME &&
+				codemodeCalls(context?.result).some((call) => call?.status === "error");
+			if (!generic && toolName === CODEMODE_TOOL_NAME && visualState === "success")
+				settledRawIcon = codemodeFailed ? "✗" : "●";
 			const incompletePlan =
+				!generic &&
 				toolName === "update_plan" &&
 				!isPending &&
 				!context?.isError &&
 				planFromResult(context?.result)?.steps.some((step) => step.status !== "completed");
-			const settledIconStyled = theme.fg(toolIconColor(context), settledRawIcon);
+			const settledIconStyled = theme.fg(
+				visualState === "unknown" || visualState === "cancelled"
+					? "muted"
+					: codemodeFailed && !isPending
+						? "error"
+						: toolIconColor(context),
+				settledRawIcon,
+			);
 			// Working 负责全局活动动画；工具行使用静态标记保留进行中状态。
-			const pendingIconStyled = () => theme.fg(toolIconColor(context), pendingIcon(toolName));
-			const summary = toolCallSummary(toolName, args, {
+			const pendingIconStyled = () => theme.fg("accent", pendingIcon(toolName));
+			const inputSummary = generic ? argumentPreview(args) : "";
+			let summaryArgs = args;
+			if (generic) {
+				try {
+					summaryArgs = JSON.parse(inputSummary);
+				} catch {
+					summaryArgs = {};
+				}
+			}
+			const summary = toolCallSummary(toolName, summaryArgs, {
 				title,
 				variant: "default",
 				cwd: context?.cwd,
 			});
-			if (toolName === "update_plan") summary.payload = planSummary(args, context?.result, false);
+			if (!generic && toolName === "update_plan") {
+				const description = planSummary(args, context?.result, false);
+				summary.detail = description ? ` · ${description}` : "";
+				summary.payload = undefined;
+			}
+			if (!generic && toolName === CODEMODE_TOOL_NAME) {
+				summary.main = title;
+				summary.path = undefined;
+				summary.payload = undefined;
+				summary.detail = ` · ${codemodeSummaryParts(codemodeCalls(context?.result), 0, isPending).join(" · ")}`;
+			}
 			// ask_user_question：问题原文在折叠结果树里逐条列出，标题只留工具名和问题数，
 			// 否则第一个问题会在标题和树里各出现一次。
-			if (toolName === ASK_USER_QUESTION_TOOL_NAME) {
+			if (!generic && toolName === ASK_USER_QUESTION_TOOL_NAME) {
 				// Pi 的渲染上下文不带 result，问题数从这里取。
 				const questionCount = askUserQuestionCount(context?.result, args);
 				summary.main = title;
-				summary.detail = questionCount === undefined ? "" : ` (+${questionCount})`;
+				summary.detail =
+					(questionCount === undefined ? "" : ` · ${questionCount} questions`) +
+					(isPending ? ` · ${context?.executionStarted ? "waiting" : "receiving"}` : "");
 				summary.payload = undefined;
+			}
+			const subject = generic
+				? mcpTitle && (summary.main !== title || summary.payload)
+					? [
+							summary.main !== title ? summary.main.replace(/^MCP\s+/, "") : "",
+							summary.payload,
+							summary.detail,
+						]
+							.filter(Boolean)
+							.map((part) => part!.trim())
+							.join(" ")
+					: inputSummary
+				: toolName === "edit" || toolName === "write"
+					? (summary.path?.value ?? "")
+					: "";
+			if (generic || toolName === "edit" || toolName === "write") {
+				summary.main = title;
+				summary.path = undefined;
+				summary.payload = undefined;
+				summary.detail = "";
 			}
 			let writeStatsText = "";
 			let writeStatsStyled = "";
-			// 折叠 0 行预览时计数由正文那行（↳ diff +A -D · created …）显示，标题不重复。
-			const statsInBody = writeStatsInCollapsedBody(
-				Boolean(context?.expanded),
-				getToolDisplayConfig(),
-			);
-			if (toolName === "write" && visualState === "success" && !statsInBody) {
+			if (!generic && (toolName === "write" || toolName === "edit") && visualState === "success") {
 				const meta = writeExecutionMetadata.get(context?.toolCallId);
-				const stats = countWriteDiffStats(
-					typeof args?.content === "string" ? args.content : undefined,
-					meta?.previousContent,
-					meta?.fileExistedBeforeWrite,
-				);
+				const stats =
+					toolName === "edit"
+						? countEditDiffStats(context?.result?.details)
+						: countWriteDiffStats(
+								typeof args?.content === "string" ? args.content : undefined,
+								meta?.previousContent,
+								meta?.fileExistedBeforeWrite,
+							);
 				if (stats) {
 					const counts = styleChangeCounts(
 						(color, text) => theme.fg(color, text),
@@ -262,19 +400,27 @@ export function createCcstyleTool(
 					writeStatsStyled = counts.styled;
 				}
 			}
-			const extraText = writeStatsText || summary.detail;
-			const extraStyled = writeStatsStyled || theme.fg("dim", summary.detail);
+			const elapsed = toolElapsedMs(
+				context,
+				Boolean(context?.isPartial),
+				!generic && SHELL_TOOL_NAMES.has(toolName),
+			);
+			const durationText =
+				(elapsed === undefined ? "" : ` · ${formatToolDuration(elapsed)}`) +
+				(visualState === "cancelled" ? " · cancelled" : "");
+			const extraText = (writeStatsText || summary.detail) + durationText;
+			const extraStyled =
+				(writeStatsStyled || theme.fg("dim", summary.detail)) + theme.fg("dim", durationText);
 			let cachedWidth: number | undefined;
 			let cachedLine: string | undefined;
 			let cachedIcon: string | undefined;
-			const expanded = Boolean(context?.expanded);
-			const framed = expanded || toolName === "update_plan";
+			const framed = expanded || (!generic && toolName === "update_plan");
 			// Pi does not call renderResult before the first result; show streamed steps in the call.
 			const preview =
-				toolName === "update_plan" && !context?.result
+				!generic && toolName === "update_plan" && !context?.result
 					? createPlanPreviewComponent({ args, theme, expanded })
 					: undefined;
-			return {
+			return titleControlComponent({
 				render(width: number) {
 					const icon = isPending
 						? pendingIconStyled()
@@ -295,29 +441,55 @@ export function createCcstyleTool(
 						// 路径按最终可用宽度中间截断，避免整行二次截断隐藏文件名。
 						cachedLine = `${lead}${icon} ${renderToolSummary(summary, mainWidth, theme.fg.bind(theme))}${extraStyled}`;
 					}
-					const planHint =
-						toolName === "update_plan" && !context?.isGrouped?.() && planFromResult(context?.result)
-							? ` · ${expanded ? collapseHintText() : showMoreHintText()}`
+					const text = textFromResult(context?.result, false);
+					const hasDetails =
+						(generic
+							? hasExpandableDetail(text, summaryArgs) || inputSummary.endsWith("…")
+							: hasExpandableDetail(text, args)) ||
+						(generic &&
+							Boolean(context?.result) &&
+							typeof originalTool.renderResult === "function") ||
+						boundedTextPreview(text, { width: Math.max(1, viewportWidth - 3), maxRows: 4 }).omitted;
+					const hint =
+						!context?.isGrouped?.() && (expanded || hasDetails)
+							? theme.fg(
+									isToolCallHovered(context?.toolCallId) ? "text" : "dim",
+									` · ${expanded ? collapseHintText() : showMoreHintText()}`,
+								)
 							: "";
-					const header = planHint
-						? truncateToWidth(cachedLine, Math.max(0, viewportWidth - visibleWidth(planHint)), "") +
-							theme.fg(isToolCallHovered(context?.toolCallId) ? "text" : "dim", planHint)
-						: cachedLine;
+					const subjectPreview =
+						!expanded && subject
+							? boundedTextPreview(subject, { width: Math.max(1, viewportWidth - 3), maxRows: 2 })
+							: undefined;
 					return [
-						truncateToWidth(header, viewportWidth, ""),
+						renderToolHeaderToWidth(cachedLine, hint, viewportWidth),
+						...(subjectPreview?.rows.map((row) => `   ${theme.fg("mdCode", row)}`) ?? []),
+						...(subjectPreview?.omitted || (!expanded && generic && inputSummary.endsWith("…"))
+							? [theme.fg("dim", "   … More input hidden")]
+							: []),
 						...(preview?.render(viewportWidth) ?? []),
+						...(waitingView?.render(width) ?? []),
 					];
 				},
 				invalidate() {
 					cachedLine = undefined;
 					cachedIcon = undefined;
 				},
-			};
+			});
 		},
 		renderResult(result: any, options: any, theme: any, context: any) {
 			const expanded = isToolExpanded(options, context);
-			const isError = Boolean(options?.isError || context?.isError);
-			if (toolName === "update_plan" && !isError && !result?.isError) {
+			const isError = Boolean(options?.isError || context?.isError || result?.isError);
+			result = { ...context?.result, ...result, isError };
+			if (generic && expanded && typeof originalTool.renderResult === "function") {
+				try {
+					const originalView = originalTool.renderResult(result, options, theme, context);
+					if (originalView && typeof originalView.render === "function") return originalView;
+				} catch {
+					// A presentation failure must not change the tool's actual outcome.
+				}
+			}
+			if (!generic && toolName === "update_plan" && !isError && !result?.isError) {
 				const plan = planFromResult(result);
 				if (plan) {
 					if (!options?.isPartial) setToolVisualState(context, "success");
@@ -336,7 +508,7 @@ export function createCcstyleTool(
 				}
 			}
 			// codemode：折叠态自己画子调用树，展开态给全部子调用与去掉脚本头的输出
-			if (toolName === CODEMODE_TOOL_NAME) {
+			if (!generic && toolName === CODEMODE_TOOL_NAME) {
 				if (!options?.isPartial) setToolVisualState(context, isError ? "error" : "success");
 				if (expanded) {
 					return renderExpandedToolResult(
@@ -362,12 +534,16 @@ export function createCcstyleTool(
 				});
 			}
 			// ask_user_question：折叠态摊成问答树，展开态按问题逐条列出选择。
-			if (toolName === ASK_USER_QUESTION_TOOL_NAME) {
+			if (!generic && toolName === ASK_USER_QUESTION_TOOL_NAME) {
 				if (!options?.isPartial) setToolVisualState(context, isError ? "error" : "success");
 				if (options?.isPartial) {
-					// 折叠态 1 格缩进：与完成后的 ├/└ 对齐标题行的勾。
-					const pending = expanded ? "↳ Pending…" : " ↳ Pending…";
-					return new Text(theme.fg("muted", pending), 0, 0);
+					return createAskUserResultComponent({
+						result,
+						theme,
+						isError,
+						args: context?.args,
+						running: true,
+					});
 				}
 				if (expanded) {
 					return renderExpandedToolResult(
@@ -386,10 +562,11 @@ export function createCcstyleTool(
 					result,
 					theme,
 					isError,
+					args: context?.args,
 					isHovered: () => isToolCallHovered(toolCallId),
 				});
 			}
-			if (FILE_PANEL_TOOL_NAMES.has(toolName)) {
+			if (!generic && FILE_PANEL_TOOL_NAMES.has(toolName)) {
 				if (!options?.isPartial) setToolVisualState(context, isError ? "error" : "success");
 				if (expanded)
 					return renderExpandedToolResult(
@@ -410,7 +587,7 @@ export function createCcstyleTool(
 					Boolean(options?.isPartial),
 				);
 			}
-			if (toolName === "bash") {
+			if (!generic && SHELL_TOOL_NAMES.has(toolName)) {
 				if (!options?.isPartial) {
 					if (context?.state && context.state.ccstyleShellEndedAt === undefined)
 						context.state.ccstyleShellEndedAt = Date.now();
@@ -428,44 +605,33 @@ export function createCcstyleTool(
 					);
 				if (context?.state) context.state.ccstyleIoView = undefined;
 				return createBashResultComponent({
+					toolName,
 					args: context?.args,
 					result,
 					theme,
 					isPartial: Boolean(options?.isPartial),
 				});
 			}
-			if (options?.isPartial) {
-				// 折叠态保持 3 格：与完成后的 `   ↳ …` 同列，工具跑完那行不横跳。
-				// 展开态贴左（Box 提供 1 格 pad）。
-				const pending = expanded ? "↳ Pending…" : "   ↳ Pending…";
-				if (!SHELL_TOOL_NAMES.has(toolName)) {
-					return new Text(theme.fg("muted", pending), 0, 0);
-				}
-				// shell 运行中报已用时间：数字在 render() 内取，Working 重绘时同步更新。
+			if (options?.isPartial && !expanded) {
+				const text = textFromResult(result, false);
 				return {
 					render(width: number) {
-						const elapsed = shellDurationText(toolName, context, true);
-						const suffix = elapsed ? theme.fg("dim", ` · ${elapsed}`) : "";
-						return [truncateToWidth(theme.fg("muted", pending) + suffix, width, "")];
+						const preview = boundedTextPreview(text || "Running…", {
+							width: Math.max(1, toolViewportWidth(width) - 3),
+							maxRows: 4,
+						});
+						return [
+							...preview.rows.map((row) => `   ${theme.fg("muted", row)}`),
+							...(preview.omitted ? [theme.fg("dim", "  … More output hidden")] : []),
+						];
 					},
-					invalidate(): void {},
+					invalidate() {},
 				};
 			}
 
-			// shell：结果定型时定一次结束时间，这一行之后不再变。
-			if (
-				SHELL_TOOL_NAMES.has(toolName) &&
-				context?.state &&
-				context.state.ccstyleShellEndedAt === undefined
-			) {
-				context.state.ccstyleShellEndedAt = Date.now();
-			}
-			// 折叠行接在摘要后，展开态接在 Output 正文后（原生也是在结果底部报一行）。
-			const duration = shellDurationText(toolName, context, false);
-
-			setToolVisualState(context, isError ? "error" : "success");
+			setToolVisualState(context, options?.isPartial ? "pending" : isError ? "error" : "success");
 			const toolCallId = context?.toolCallId;
-			if (shouldRenderRichDiff(toolName, Boolean(isError))) {
+			if (!generic && shouldRenderRichDiff(toolName, Boolean(isError))) {
 				// getter 保证 Diff indicator / wrap / limits 下次绘制即更新
 				const richResult = renderRichToolResult(
 					toolName,
@@ -486,21 +652,12 @@ export function createCcstyleTool(
 					return expanded ? expandedBodyComponent(richResult) : insetComponent(richResult);
 			}
 
-			const text = textFromResult(result, expanded);
+			const { text, displayLimited } = resultTextView(result, expanded);
 			const args = context?.args;
 			if (expanded) {
 				const taskResult = renderExpandedTaskResult(toolName, text, theme, Boolean(isError));
 				if (taskResult) return taskResult;
 			}
-			const tasks = !isError && toolName === "TaskList" ? parseTaskList(text) : [];
-			const rendered = tasks.length
-				? taskListSummary(tasks)
-				: collapsedResultSummary({ result, toolName, text, isError });
-			const expandable = !expanded && (tasks.length > 0 || hasExpandableDetail(text, args));
-			const hintText = showMoreHintText();
-			const hintPrefix = expandable ? theme.fg("dim", " · ") : "";
-			const hint = expandable ? hintPrefix + theme.fg("dim", hintText) : "";
-			const hoveredHint = expandable ? hintPrefix + theme.fg("text", hintText) : "";
 			if (expanded) {
 				const view = renderExpandedToolResult(
 					text || "",
@@ -511,33 +668,54 @@ export function createCcstyleTool(
 					context,
 					true, // mode=on：贴左，由外层 Box(1,1) 提供 1 格 padding
 				);
-				// 尾部附注只能挂在 IoView 上：鼠标层按对象识别它，包一层会断掉命中。
-				// 与折叠态保持同一写法：裸值，不写 Took。
-				if (isExpandedToolIoView(view)) view.setFooter(duration || undefined);
 				return view;
 			}
 			if (context?.state) context.state.ccstyleIoView = undefined;
-			// 折叠态的耗时接在摘要后、展开提示前（提示必须留在行尾供鼠标层识别）。
-			const body = duration ? `${rendered}${theme.fg("dim", ` · ${duration}`)}` : rendered;
+			const output =
+				text ||
+				(result?.content?.some((item: any) => item.type === "image")
+					? "Image result"
+					: "No output");
 			let cachedWidth: number | undefined;
-			let cachedLine: string | undefined;
-			let cachedHoveredLine: string | undefined;
+			let cachedRows: string[] | undefined;
 			return {
 				render(width: number) {
-					if (cachedLine === undefined || cachedWidth !== width) {
+					if (cachedRows === undefined || cachedWidth !== width) {
 						cachedWidth = width;
-						cachedLine = theme.fg(
-							isError ? "error" : "muted",
-							renderCollapsedToolResultToWidth(body, hint, width),
+						const preview = boundedTextPreview(output, {
+							width: Math.max(1, toolViewportWidth(width) - 3),
+							maxRows: 4,
+						});
+						cachedRows = preview.rows.map(
+							(row) => `   ${theme.fg(isError ? "error" : "muted", row)}`,
 						);
-						cachedHoveredLine = theme.fg(
-							isError ? "error" : "muted",
-							renderCollapsedToolResultToWidth(body, hoveredHint, width),
+						if (preview.omitted)
+							cachedRows.push(
+								theme.fg(
+									"dim",
+									preview.hiddenLines !== undefined && !displayLimited
+										? `   … ${preview.hiddenLines} more lines in result`
+										: "  … More output hidden",
+								),
+							);
+						if (
+							displayLimited &&
+							!preview.rows.some((row) =>
+								/^\[Display limit reached · (?:output|structured result) excerpt\]$/.test(
+									row.trim(),
+								),
+							)
+						)
+							cachedRows.push(theme.fg("dim", "  [Display limit reached · output excerpt]"));
+						cachedRows = cachedRows.map((row) =>
+							truncateToWidth(row, toolViewportWidth(width), "…"),
 						);
 					}
-					return [isToolCallHovered(toolCallId) ? cachedHoveredLine! : cachedLine];
+					return cachedRows;
 				},
-				invalidate() {},
+				invalidate() {
+					cachedRows = undefined;
+				},
 			};
 		},
 	};

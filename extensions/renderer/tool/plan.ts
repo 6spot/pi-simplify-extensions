@@ -1,4 +1,4 @@
-import { Text, truncateToWidth, type Component } from "@earendil-works/pi-tui";
+import { Text, truncateToWidth, visibleWidth, type Component } from "@earendil-works/pi-tui";
 import { sanitizeToolResultText } from "../../utils/tool-result-sanitize.ts";
 
 type PlanStatus = "pending" | "in_progress" | "completed";
@@ -116,6 +116,7 @@ export function createPlanResultComponent(options: {
 			const { plan, theme, expanded } = options;
 			const fg = (color: string, value: string) => theme.fg(color, value);
 			const lines: string[] = [];
+			let detailsHidden = false;
 			const firstPending = plan.steps.findIndex((step) => step.status !== "completed");
 			const active = plan.steps.findIndex((step) => step.status === "in_progress");
 			const focus = active >= 0 ? active : firstPending >= 0 ? firstPending : plan.steps.length - 1;
@@ -124,7 +125,9 @@ export function createPlanResultComponent(options: {
 			const note = (text: string) => lines.push(truncateToWidth(fg("dim", `  ${text}`), width));
 			const item = (prefix: string, value: string, color: string) => {
 				if (!expanded) {
-					lines.push(truncateToWidth(prefix + fg(color, oneLine(value)), width));
+					const row = prefix + fg(color, oneLine(value));
+					if (visibleWidth(row) > width) detailsHidden = true;
+					lines.push(truncateToWidth(row, width));
 					return;
 				}
 				const body = new Text(fg(color, clean(value)), 0, 0).render(Math.max(1, width - 4));
@@ -135,7 +138,7 @@ export function createPlanResultComponent(options: {
 			for (const step of selected) {
 				const active = !options.preview && step.status === "in_progress";
 				const completed = !options.preview && step.status === "completed";
-				const icon = active ? fg("accent", "○") : completed ? fg("success", "✓") : fg("dim", "·");
+				const icon = active ? fg("accent", "→") : completed ? fg("success", "✓") : fg("dim", "·");
 				item(`  ${icon} `, step.goal, active ? "text" : completed ? "dim" : "muted");
 			}
 			const remaining = plan.steps.length - start - selected.length;
@@ -155,6 +158,7 @@ export function createPlanResultComponent(options: {
 					for (const value of values) item("  · ", value, color);
 				}
 			}
+			if (!expanded && detailsHidden) note("… More step details hidden");
 			return lines.map((line) => truncateToWidth(line, width));
 		},
 	};

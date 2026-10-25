@@ -1,3 +1,4 @@
+import { stripVTControlCharacters } from "node:util";
 import {
 	BranchSummaryMessageComponent,
 	CompactionSummaryMessageComponent,
@@ -6,7 +7,7 @@ import {
 import { Markdown, Spacer, Text } from "@earendil-works/pi-tui";
 import { MESSAGE_DISPLAY_PATCH, patchRegistry } from "../../utils/patch-keys.ts";
 import { TOOL_CARD_BG_SLOT } from "./tool-state.ts";
-import { showMoreHintText } from "./names.ts";
+import { showMoreHintText, collapseHintText, renderToolHeaderToWidth } from "./names.ts";
 import { walkComponentTree } from "../../utils/component-tree.ts";
 
 /**
@@ -36,13 +37,17 @@ type DisplayKind = {
 };
 
 const SKILL_KIND: DisplayKind = {
-	title: (component) => `Skill ${String(component.skillBlock?.name ?? "skill")}`,
+	title: (component) => `Skill ${String(component.skillBlock?.name ?? "skill")} · Loaded`,
 	body: (component) => String(component.skillBlock?.content ?? ""),
 };
 
 const COMPACTION_KIND: DisplayKind = {
-	title: (component) =>
-		`Compacted from ${Number(component.message?.tokensBefore ?? 0).toLocaleString()} tokens`,
+	title: (component) => {
+		const tokens = component.message?.tokensBefore;
+		return typeof tokens === "number" && Number.isFinite(tokens) && tokens >= 0
+			? `Compacted from ${tokens.toLocaleString()} tokens`
+			: "Compaction summary";
+	},
 	body: (component) => String(component.message?.summary ?? ""),
 };
 
@@ -60,7 +65,15 @@ function ensureHintHover(component: any): void {
 	};
 }
 
-function renderCcstyle(component: any, kind: DisplayKind): void {
+const messageHeaders = new WeakMap<object, { owner: { active: boolean }; line?: string }>();
+
+export function isMessageTitleControlLine(component: any, line: string): boolean | undefined {
+	const header = messageHeaders.get(component);
+	if (!header?.owner.active) return undefined;
+	return header.line !== undefined && stripVTControlCharacters(line).trim() === header.line;
+}
+
+function renderCcstyle(component: any, kind: DisplayKind, owner: { active: boolean }): void {
 	const theme = displayTheme;
 	if (!theme) return; // 主题未就绪时保留原生渲染
 	if (component.bgFn) component.setBgFn?.(undefined); // 与工具调用一致，去掉灰底
@@ -72,10 +85,24 @@ function renderCcstyle(component: any, kind: DisplayKind): void {
 	ensureHintHover(component);
 	const icon = theme.fg("success", "✓");
 	const title = theme.fg("toolTitle", kind.title(component));
+	const header: { owner: { active: boolean }; line?: string } = { owner };
+	messageHeaders.set(component, header);
+	const titleView = {
+		render(width: number) {
+			const hint =
+				theme.fg("dim", " · ") +
+				theme.fg(
+					component.hintHovered ? "text" : "dim",
+					component.expanded ? collapseHintText() : showMoreHintText(),
+				);
+			const row = renderToolHeaderToWidth(`${icon} ${title}`, hint, width);
+			header.line = stripVTControlCharacters(row).trim();
+			return [row];
+		},
+		invalidate() {},
+	};
 	if (!component.expanded) {
-		const hovered = component.hintHovered === true;
-		const hint = `${theme.fg("dim", " · ")}${theme.fg(hovered ? "text" : "dim", showMoreHintText())}`;
-		component.addChild(new Text(`${icon} ${title}${hint}`, 0, 0));
+		component.addChild(titleView);
 		return;
 	}
 	// 展开卡与成功的工具卡同底色，上下左右各 1 格。
@@ -84,7 +111,7 @@ function renderCcstyle(component: any, kind: DisplayKind): void {
 	if (typeof theme.bg === "function" && typeof component.setBgFn === "function") {
 		component.setBgFn((text: string) => theme.bg(TOOL_CARD_BG_SLOT.success, text));
 	}
-	component.addChild(new Text(`${icon} ${title}`, 0, 0));
+	component.addChild(titleView);
 	component.addChild(new Spacer(1));
 	component.addChild(
 		new Markdown(kind.body(component), 0, 0, component.markdownTheme, {
@@ -114,7 +141,7 @@ export function installMessageDisplayRendering(): () => void {
 		const installed = function (this: any) {
 			if (patch.active) {
 				try {
-					renderCcstyle(this, kind);
+					renderCcstyle(this, kind, patch);
 					return;
 				} catch {
 					// 渲染失败回退原生

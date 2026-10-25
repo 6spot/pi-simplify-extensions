@@ -20,7 +20,7 @@ export const DEFAULT_TOOL_DISPLAY_CONFIG: ToolDisplayConfig = {
 	diffIndicatorMode: "bars",
 	diffSplitMinWidth: 120,
 	editDiffCollapsedLines: 12,
-	writeDiffCollapsedLines: 0,
+	writeDiffCollapsedLines: 4,
 	diffWordWrap: true,
 	expandedPreviewMaxLines: 40,
 };
@@ -52,7 +52,9 @@ type LocalSettings = {
 function loadLocalSettings(): LocalSettings {
 	try {
 		const value = JSON.parse(readFileSync(new URL("../../simplify.json", import.meta.url), "utf8"));
-		return value && typeof value === "object" && !Array.isArray(value) ? value as LocalSettings : {};
+		return value && typeof value === "object" && !Array.isArray(value)
+			? (value as LocalSettings)
+			: {};
 	} catch {
 		return {};
 	}
@@ -66,10 +68,14 @@ const thinkingLines = settings.thinking?.previewLines;
 export const config: Config = {
 	...DEFAULT_CONFIG,
 	diffViewMode: view && displayModes.includes(view) ? view : DEFAULT_CONFIG.diffViewMode,
-	editDiffCollapsedLines: typeof editLines === "number" && Number.isInteger(editLines) && editLines >= 0
-		? Math.min(editLines, 200) : DEFAULT_CONFIG.editDiffCollapsedLines,
-	previewLines: typeof thinkingLines === "number" && Number.isInteger(thinkingLines) && thinkingLines >= 0
-		? Math.min(thinkingLines, 15) : DEFAULT_CONFIG.previewLines,
+	editDiffCollapsedLines:
+		typeof editLines === "number" && Number.isInteger(editLines) && editLines >= 0
+			? Math.min(editLines, 200)
+			: DEFAULT_CONFIG.editDiffCollapsedLines,
+	previewLines:
+		typeof thinkingLines === "number" && Number.isInteger(thinkingLines) && thinkingLines >= 0
+			? Math.min(thinkingLines, 15)
+			: DEFAULT_CONFIG.previewLines,
 };
 
 export function getCompactThinkingConfig(source: Config = config): CompactThinkingConfig {

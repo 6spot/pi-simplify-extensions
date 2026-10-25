@@ -1,6 +1,13 @@
 import type { MessageRenderer } from "@earendil-works/pi-coding-agent";
-import { Text, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import { cardHeading, detailRows, displayText, previewRows } from "./view.ts";
+import { Text, truncateToWidth } from "@earendil-works/pi-tui";
+import {
+	cardHeading,
+	compactTaskRow,
+	detailRows,
+	displayText,
+	groupHeading,
+	previewRows,
+} from "./view.ts";
 import { expansionHintText } from "../extensions/utils/expansion-hints.ts";
 
 export interface TaskNotice {
@@ -82,33 +89,31 @@ export const renderTaskNotices: MessageRenderer = (message, options, theme) => {
 			headings.clear();
 			const rows: string[] = [];
 			const hint = expansionHintText(viewState.expanded);
+			const selected = viewState.expanded || !group ? events : events.slice(-4);
+			let omitted = false;
 			if (group) {
-				const counts = [
-					["completed", "done"],
-					["failed", "failed"],
-					["cancelled", "cancelled"],
-				].flatMap(([kind, label]) => {
-					const count = events.filter((event) => event.kind === kind).length;
-					return count ? [`${count} ${label}`] : [];
-				});
-				const failed = events.some((event) => event.kind === "failed");
-				const cancelled = events.some((event) => event.kind === "cancelled");
-				const title = theme.fg(
-					failed ? "error" : cancelled ? "dim" : "toolTitle",
-					`${failed ? "✗" : cancelled ? "–" : "●"} Subagents: ${counts.join(" · ")}`,
-				);
-				const tail = theme.fg(viewState.hovered ? "text" : "dim", ` · ${hint}`);
-				const heading = truncateToWidth(
-					title + (visibleWidth(title + tail) <= width ? tail : ""),
-					Math.max(1, width),
-					"…",
+				const heading = groupHeading(
+					"Background tasks",
+					events.map((event) => event.kind),
+					width,
+					theme,
+					hint,
+					viewState.hovered,
 				);
 				rows.push(heading);
 				if (displayText(heading).includes(hint)) headings.add(displayText(heading).trim());
+				if (selected.length < events.length)
+					rows.push(
+						truncateToWidth(
+							theme.fg("dim", `${events.length - selected.length} earlier tasks (expand to view)`),
+							Math.max(1, width),
+							"…",
+						),
+					);
 			}
-			for (const [index, event] of events.entries()) {
-				const prefix = group ? (index === events.length - 1 ? "└ " : "├ ") : "";
-				const rail = group ? (index === events.length - 1 ? "  " : "│ ") : "";
+			for (const [index, event] of selected.entries()) {
+				const prefix = group ? (index === selected.length - 1 ? "└ " : "├ ") : "";
+				const rail = group ? (index === selected.length - 1 ? "  " : "│ ") : "";
 				const status = terminal(event.kind)
 					? event.kind
 					: event.status === "blocked"
@@ -120,6 +125,7 @@ export const renderTaskNotices: MessageRenderer = (message, options, theme) => {
 						task: typeof event.task === "string" ? event.task : undefined,
 						status,
 						elapsed_ms: event.elapsed_ms,
+						identity: group ? "" : "Background task",
 					},
 					Math.max(1, width - prefix.length),
 					theme,
@@ -127,7 +133,8 @@ export const renderTaskNotices: MessageRenderer = (message, options, theme) => {
 					viewState.hovered,
 				);
 				if (!group && index) rows.push("");
-				rows.push(truncateToWidth(theme.fg("dim", prefix) + heading, Math.max(1, width), "…"));
+				if (!group || viewState.expanded)
+					rows.push(truncateToWidth(theme.fg("dim", prefix) + heading, Math.max(1, width), "…"));
 				if (!group && index === 0 && displayText(heading).includes(hint))
 					headings.add(displayText(heading).trim());
 				const result = typeof event.result === "string" ? event.result : event.message;
@@ -142,8 +149,29 @@ export const renderTaskNotices: MessageRenderer = (message, options, theme) => {
 							cancelled: "Cancelled",
 						} as Record<string, string>
 					)[event.kind] ?? "Progress";
-				const text =
-					event.kind === "failed" ? error : event.kind === "completed" ? result : event.message;
+				const text = ["failed", "cancelled"].includes(event.kind)
+					? error
+					: event.kind === "completed"
+						? result
+						: event.message;
+				const partialResult =
+					["failed", "cancelled"].includes(event.kind) &&
+					typeof event.result === "string" &&
+					Boolean(event.result) &&
+					event.result !== text;
+				if (group && !viewState.expanded) {
+					const compact = compactTaskRow(
+						{ ...event, status },
+						label,
+						text,
+						Math.max(1, width - prefix.length),
+						theme,
+					);
+					rows.push(truncateToWidth(theme.fg("dim", prefix) + compact.line, Math.max(1, width)));
+					rows.push(truncateToWidth(theme.fg("dim", rail) + compact.preview, Math.max(1, width)));
+					omitted ||= compact.omitted || partialResult;
+					continue;
+				}
 				let body: string[];
 				if (viewState.expanded) {
 					const sections: Parameters<typeof detailRows>[0] = [];
@@ -152,12 +180,7 @@ export const renderTaskNotices: MessageRenderer = (message, options, theme) => {
 					if (typeof event.id === "string")
 						sections.push({ label: "ID", text: event.id, color: "dim" });
 					sections.push({ label, text, color: event.kind === "failed" ? "error" : "toolOutput" });
-					if (
-						["failed", "cancelled"].includes(event.kind) &&
-						typeof event.result === "string" &&
-						event.result
-					)
-						sections.push({ label: "Partial result", text: result });
+					if (partialResult) sections.push({ label: "Partial result", text: result });
 					body = detailRows(sections, Math.max(1, width - rail.length), theme);
 				} else {
 					body = previewRows(
@@ -167,11 +190,23 @@ export const renderTaskNotices: MessageRenderer = (message, options, theme) => {
 						theme,
 						!group && terminal(event.kind) ? 3 : 1,
 					);
+					if (partialResult)
+						body.push(
+							truncateToWidth(
+								theme.fg("dim", "… Partial result hidden"),
+								Math.max(1, width - rail.length),
+								"…",
+							),
+						);
 				}
 				rows.push(
 					...body.map((row) => truncateToWidth(theme.fg("dim", rail) + row, Math.max(1, width))),
 				);
 			}
+			if (omitted)
+				rows.push(
+					truncateToWidth(theme.fg("dim", "… More task details hidden"), Math.max(1, width), "…"),
+				);
 			return rows;
 		},
 	};

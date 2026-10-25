@@ -53,7 +53,7 @@ test("finished notices preserve previews, native keyboard expansion and local mo
 	const data = message([notice()]);
 	const original = structuredClone(data);
 	let component = view(data);
-	assert.match(text(component), /scout · 检查中文通知 🧪 · completed · 34.8s · Expand/);
+	assert.match(text(component), /Background task · scout · 检查中文通知 🧪 · 34.8s · Expand/);
 	assert.match(text(component), /Result: 结果第一行/);
 	assert.doesNotMatch(text(component), /full-task-id|FULL_RESULT_END/);
 	assert.ok(isMessageDisplayComponent(component));
@@ -99,7 +99,7 @@ test("same-batch terminal trees retain failures and cancellation reasons, with f
 		}),
 	]);
 	const component = view(data);
-	assert.match(text(component), /^✗ Subagents: 1 done · 1 failed · 1 cancelled/);
+	assert.match(text(component), /^✗ Background tasks · 1 done · 1 failed · 1 cancelled/);
 	assert.match(
 		text(component),
 		/├ ✓ scout[\s\S]*├ ✗ worker[\s\S]*Error: ACTUAL_ERROR[\s\S]*└ – reviewer[\s\S]*Cancelled: USER_CANCELLED/,
@@ -118,9 +118,12 @@ test("same-batch terminal trees retain failures and cancellation reasons, with f
 	assert.match(text(component), /USER_CANCELLED[\s\S]*Partial result[\s\S]*PARTIAL_RESULT/);
 	assert.match(
 		text(view(message([notice({ kind: "cancelled" }), notice({ kind: "cancelled" })]))),
-		/^– Subagents: 2 cancelled/,
+		/^– Background tasks · 2 cancelled/,
 	);
-	assert.match(text(view(message([notice(), notice({ id: "other" })]))), /^● Subagents: 2 done/);
+	assert.match(
+		text(view(message([notice(), notice({ id: "other" })]))),
+		/^● Background tasks · 2 done/,
+	);
 	const mixed = view(
 		message([notice(), notice({ kind: "decision", status: "blocked", message: "CHOOSE_NOW" })]),
 	);
@@ -130,7 +133,10 @@ test("same-batch terminal trees retain failures and cancellation reasons, with f
 
 test("historical notices omit unavailable fields, sanitize display and remain bounded at narrow widths", () => {
 	const legacy = { agent: "reader", kind: "completed", message: "legacy result" };
-	assert.match(text(view(message([legacy]))), /reader · completed[\s\S]*Result: legacy result/);
+	assert.match(
+		text(view(message([legacy]))),
+		/Background task · reader[^\n]*[\s\S]*Result: legacy result/,
+	);
 	assert.doesNotMatch(text(view(message([legacy]))), /undefined|NaN|\d\.\ds|ID|\$/);
 	const data = message([
 		notice({
@@ -209,7 +215,7 @@ test("task view reads new state without a new tool result and retains truthful h
 	};
 	assert.match(text(component), /waiting for parent[\s\S]*Waiting for: CHOOSE_LANGUAGE/);
 	current = { ...current, status: "completed", result: "FIRST_RESULT\n2\n3\nFULL_RESULT_END" };
-	assert.match(text(component), /completed[\s\S]*Result: FIRST_RESULT/);
+	assert.match(text(component), /✓ Subagent[^\n]*[\s\S]*Result: FIRST_RESULT/);
 	assert.doesNotMatch(text(component), /Waiting for:|Progress:|FULL_RESULT_END/);
 	current = { ...current, status: "failed", error: "REAL_FAILURE" };
 	assert.match(text(component), /failed[\s\S]*Error: REAL_FAILURE/);
@@ -228,4 +234,44 @@ test("task view reads new state without a new tool result and retains truthful h
 	);
 	for (const width of [1, 2, 22, 40, 80, 110])
 		for (const row of component.render(width)) assert.ok(visibleWidth(row) <= width);
+});
+
+test("terminal notice batches bound recent tasks and disclose hidden errors without rewriting findings", () => {
+	const events = Array.from({ length: 6 }, (_, index) =>
+		notice({
+			id: `notice-${index}`,
+			agent: `reviewer-${index}`,
+			kind: index === 0 ? "failed" : index === 5 ? "cancelled" : "completed",
+			status: index === 0 ? "failed" : index === 5 ? "cancelled" : "completed",
+			message: "PROTOCOL_SUMMARY",
+			error:
+				index === 0
+					? "EARLIER_FAILURE"
+					: index === 5
+						? "USER_CANCELLED\nFULL_CANCELLATION_REASON"
+						: undefined,
+			result: `\n## Review\n\n\u0060\u0060\u0060text\nFound ${index} issues\nFULL_FINDING_${index}\n\u0060\u0060\u0060`,
+		}),
+	);
+	const data = message(events);
+	const original = structuredClone(data);
+	const component = view(data);
+	const collapsed = text(component, 180);
+	assert.match(collapsed, /^✗ Background tasks · 1 failed · 4 done · 1 cancelled/);
+	assert.match(collapsed, /2 earlier tasks/);
+	assert.equal(collapsed.split("\n").filter((line: string) => /^[├└] /.test(line)).length, 4);
+	assert.match(collapsed, /reviewer-2[^\n]*\n[^\n]*Result: Found 2 issues/);
+	assert.match(collapsed, /reviewer-5[^\n]*\n[^\n]*Cancelled: USER_CANCELLED/);
+	assert.match(collapsed, /More task details hidden/);
+	assert.doesNotMatch(
+		collapsed,
+		/reviewer-0|reviewer-1|FULL_FINDING|FULL_CANCELLATION_REASON|PROTOCOL_SUMMARY|passed/i,
+	);
+	assert.equal((collapsed.match(/Expand/g) ?? []).length, 1);
+	component.setExpanded(true);
+	const expanded = text(component, 180);
+	assert.match(expanded, /reviewer-0[\s\S]*EARLIER_FAILURE/);
+	assert.match(expanded, /## Review[\s\S]*FULL_FINDING_2/);
+	assert.match(expanded, /FULL_CANCELLATION_REASON/);
+	assert.deepEqual(data, original);
 });

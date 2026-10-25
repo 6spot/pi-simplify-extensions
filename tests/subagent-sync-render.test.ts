@@ -92,11 +92,12 @@ test("synchronous long-running Subagent stays compact and transparent, using rea
 		const collapsed = render(tool);
 		assert.match(
 			collapsed,
-			/○ trellis-implement[^\n]*running[^\n]*(?:Expand|ctrl\+o to show more)/,
+			/○ Subagent · trellis-implement[^\n]*running[^\n]*(?:Expand|ctrl\+o to show more)/,
 		);
 		assert.match(collapsed, /Progress: Report 99/);
 		assert.doesNotMatch(collapsed, /✓|Report 98|earlier items|55 turns|142000|Source:|0\.0s/);
-		assert.ok(collapsed.split("\n").filter((line) => line.trim()).length <= 2);
+		assert.ok(collapsed.split("\n").filter((line) => line.trim()).length <= 3);
+		assert.match(collapsed, /More task details hidden/);
 		assert.equal(slots.length, 0);
 		tool.setExpanded(true);
 		const expanded = render(tool);
@@ -117,14 +118,14 @@ test("synchronous long-running Subagent stays compact and transparent, using rea
 		};
 		tool.updateResult(result([completed]));
 		const settled = render(tool);
-		assert.match(settled, /✓ trellis-implement[^\n]*completed/);
+		assert.match(settled, /✓ Subagent · trellis-implement[^\n]*(?:Expand|ctrl\+o to show more)/);
 		assert.match(settled, /Final result[\s\S]*Second fact[\s\S]*Third fact/);
 		assert.doesNotMatch(settled, /Fourth fact|Report 99|non-fatal process warning/);
 		assert.equal(slots.length, 0);
 		tool.updateResult(
 			result([{ ...completed, exitCode: 7, errorMessage: "Actual child failure" }], "single", true),
 		);
-		assert.match(render(tool), /✗ trellis-implement[^\n]*failed/);
+		assert.match(render(tool), /✗ Subagent · trellis-implement[^\n]*failed/);
 		assert.match(render(tool), /Error: Actual child failure/);
 		assert.equal(slots.length, 0);
 		tool.setExpanded(true);
@@ -175,7 +176,7 @@ test("background dispatch and management cards are transparent in every collapse
 					isError: status === "failed",
 				});
 				slots.length = 0;
-				assert.match(render(tool), new RegExp(status));
+				assert.match(render(tool), status === "completed" ? /✓ Subagent/ : new RegExp(status));
 				assert.equal(slots.length, 0);
 				tool.setExpanded(true);
 				render(tool);
@@ -191,7 +192,7 @@ test("background dispatch and management cards are transparent in every collapse
 			content: [{ type: "text", text: "Subagent was aborted" }],
 			isError: true,
 		});
-		assert.match(render(cancelled), /cancelled[\s\S]*Cancelled: Subagent was aborted/);
+		assert.match(render(cancelled), /cancelled[\s\S]*Subagent was aborted/);
 	} finally {
 		cleanup();
 	}
@@ -212,7 +213,7 @@ test("parallel and chain cards preserve per-process completion, cancellation and
 	for (const mode of ["parallel", "chain"] as const) {
 		const view = createSyncTaskView([first, second], theme, false, { partial: true, mode });
 		const text = render(view);
-		assert.match(text, /✓ trellis-implement[^\n]*completed/);
+		assert.match(text, /✓ trellis-implement[^\n]*\n[^\n]*Result: First completed/);
 		assert.match(text, /○ reviewer[^\n]*running/);
 		assert.doesNotMatch(text, /\d+\.\ds/);
 		for (const width of [1, 22, 44, 80, 120])
@@ -224,7 +225,7 @@ test("parallel and chain cards preserve per-process completion, cancellation and
 		false,
 		{ partial: false },
 	);
-	assert.match(render(cancelled), /– trellis-implement[^\n]*cancelled/);
+	assert.match(render(cancelled), /– Subagent · trellis-implement[^\n]*cancelled/);
 	assert.match(render(cancelled), /Cancelled: Interrupted by user/);
 });
 
@@ -251,7 +252,7 @@ test("Subagent cards created before renderer registration repaint once after the
 		render(tool);
 		assert.equal(updates, 0, "a missing definition does not rebuild on every paint");
 		tool.toolDefinition = definition;
-		assert.match(render(tool), /✓ trellis-implement/);
+		assert.match(render(tool), /✓ Subagent · trellis-implement/);
 		render(tool);
 		assert.equal(updates, 1);
 		assert.equal(slots.length, 0);
@@ -277,7 +278,7 @@ test("dedicated Subagent cards created before installation adopt current renderi
 	old.renderResult = definition.renderResult;
 	const cleanup = install();
 	try {
-		assert.match(render(tool), /✓ trellis-implement/);
+		assert.match(render(tool), /✓ Subagent · trellis-implement/);
 		assert.doesNotMatch(render(tool), /OLD_SUBAGENT|Report 98/);
 		assert.equal(calls, 1);
 		render(tool);

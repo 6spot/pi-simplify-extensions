@@ -35,8 +35,8 @@ test("耗时格式：毫秒、秒、分、时", () => {
 	assert.equal(formatToolDuration(1234.5), "1.2s");
 	assert.equal(formatToolDuration(59_400), "59.4s");
 	// 分钟级不能再显示成 "300.0s"
-	assert.equal(formatToolDuration(300_000), "5m 0s");
-	assert.equal(formatToolDuration(3_723_000), "1h 2m 3s");
+	assert.equal(formatToolDuration(300_000), "5m0s");
+	assert.equal(formatToolDuration(3_723_000), "1h02m");
 });
 
 test("完成态：优先用 Pi 记录的 durationMs", () => {
@@ -189,11 +189,11 @@ test("Bash 展开态：耗时只显示在标题，Output 截断提示保留", ()
 		const lines = render(tool)
 			.map((l) => l.replace(/\s+$/g, ""))
 			.filter(Boolean);
-		const footer = lines.find((l: string) => /more lines/.test(l))!;
+		const footer = lines.find((l: string) => /more display rows/.test(l))!;
 		assert.match(lines[0]!, /✓ Bash · 29\.5s/);
 		assert.match(
 			footer,
-			/^\s*… 30 more lines · .*Expand$/,
+			/^\s*… 30 more display rows$/,
 			`输出截断提示保留且不重复耗时: ${JSON.stringify(footer)}`,
 		);
 		// 不再单独占一行
@@ -273,7 +273,7 @@ test("powershell 与 pwsh 同样报耗时", () => {
 			tool.render(100);
 			now += 250;
 			tool.updateResult({ content: [{ type: "text", text: "now" }], isError: false });
-			assert.match(render(tool)[1]!, /250ms/, `${name} 应报耗时`);
+			assert.match(render(tool)[0]!, /250ms/, `${name} 应在标题报耗时`);
 		}
 	} finally {
 		Date.now = originalNow;

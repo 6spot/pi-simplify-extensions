@@ -21,13 +21,13 @@ import {
 	renderToolSummary,
 	toolCallSummary,
 } from "./names.ts";
-import { showMoreHintText } from "./names.ts";
+import { boundedTextPreview } from "./preview.ts";
 import { formatToolDuration, headTruncateToWidth, toolViewportWidth } from "./result.ts";
 
 export const CODEMODE_TOOL_NAME = "codemode";
 
 /** 折叠态最多列几条子调用（与 pi 原生一致，更早的折叠成一行）。 */
-const COLLAPSED_CALL_LIMIT = 8;
+const COLLAPSED_CALL_LIMIT = 6;
 /** 折叠态正文缩进：1 格，让 ├/└ 落在标题行状态标记的正下方。 */
 const INDENT = " ";
 
@@ -56,12 +56,16 @@ export function codemodeOutputText(result: any): string {
 		.filter((item: any) => item?.type === "text")
 		.map((item: any) => String(item?.text ?? ""));
 	if (blocks.length > 0 && SCRIPT_HEADER.test(blocks[0]!)) blocks.shift();
-	return sanitizeToolResultText(blocks.join("\n"), 16_384).trim();
+	const raw = blocks.join("\n");
+	return (
+		sanitizeToolResultText(raw, 16_384).trim() +
+		(raw.length > 16_384 ? "\n[Display limit reached · output excerpt]" : "")
+	);
 }
 
 export function codemodeOutputLineCount(result: any): number {
 	const text = codemodeOutputText(result).replace(/\n+$/, "");
-	return text ? text.split("\n").length : 0;
+	return text && !text.includes("Display limit reached") ? text.split("\n").length : 0;
 }
 
 /** 汇总行片段（按重要度先后排列，渲染时从尾部丢以适配宽度）。 */
@@ -70,30 +74,25 @@ export function codemodeSummaryParts(
 	outputLines: number,
 	running: boolean,
 ): string[] {
-	const total = calls.length;
-	const failed = calls.filter((call) => call?.status === "error").length;
-	const runningCount = calls.filter((call) => !call?.status || call?.status === "running").length;
-	const parts: string[] = [];
-	if (running) {
-		if (runningCount)
-			parts.push(`${runningCount} ${runningCount === 1 ? "call" : "calls"} running`);
-		const done = total - runningCount;
-		if (done) parts.push(`${done} done`);
-		if (failed) parts.push(`${failed} failed`);
-		return parts.length ? parts : ["running…"];
+	const counts = { done: 0, failed: 0, running: 0, cancelled: 0, unknown: 0 };
+	for (const call of calls) {
+		const key =
+			call?.status === "ok"
+				? "done"
+				: call?.status === "error"
+					? "failed"
+					: call?.status === "running"
+						? "running"
+						: call?.status === "cancelled"
+							? "cancelled"
+							: "unknown";
+		counts[key]++;
 	}
-	if (total) parts.push(`${total} ${total === 1 ? "call" : "calls"}`);
-	if (failed) parts.push(`${failed} failed`);
+	const parts = Object.entries(counts)
+		.filter(([, count]) => count > 0)
+		.map(([label, count]) => `${count} ${label}`);
 	if (outputLines) parts.push(`${outputLines} ${outputLines === 1 ? "line" : "lines"} output`);
-	return parts.length ? parts : ["Done"];
-}
-
-/** 宽度不够时从尾部丢片段（先丢输出行数，再丢条数），不断词。 */
-function fitSummaryParts(parts: readonly string[], width: number): string {
-	const kept = [...parts];
-	while (kept.length > 1 && visibleWidth(kept.join(" · ")) > width) kept.pop();
-	const text = kept.join(" · ");
-	return visibleWidth(text) <= width ? text : headTruncateToWidth(text, width);
+	return parts.length ? parts : [running ? "running…" : "No calls"];
 }
 
 /**
@@ -163,7 +162,7 @@ export function codemodeCodeLines(
 		if (text) statements.push(text);
 	}
 	if (statements.length === 0) return [];
-	const limit = Math.max(1, config.expandedInputMaxLines);
+	const limit = 2;
 	const visible = statements.slice(0, limit);
 	const rail = `${INDENT}${fg("dim", "│")} `;
 	const lines = visible.map((statement) =>
@@ -173,7 +172,7 @@ export function codemodeCodeLines(
 	if (hidden > 0) {
 		lines.push(
 			truncateToWidth(
-				`${rail}${fg("dim", `… ${hidden} more ${hidden === 1 ? "line" : "lines"}`)}`,
+				`${rail}${fg("dim", `… ${hidden} more ${hidden === 1 ? "statement" : "statements"}`)}`,
 				rowWidth,
 				"",
 			),
@@ -201,8 +200,17 @@ function formatCost(cost: number): string {
 }
 
 /** 单次子调用的耗时/费用（纯文本，着色由调用方决定）。 */
-function callMeta(call: CodemodeNestedCall): string[] {
+function callMeta(call: CodemodeNestedCall, includeError = true): string[] {
 	const out: string[] = [];
+	if (
+		includeError &&
+		call?.status === "error" &&
+		typeof call.error === "string" &&
+		call.error.trim()
+	)
+		out.push(oneLine(sanitizeToolResultText(call.error, 512), 120));
+	if (!["ok", "error", "running", "cancelled"].includes(String(call?.status)))
+		out.push("status unknown");
 	const duration = call?.durationMs;
 	if (typeof duration === "number" && Number.isFinite(duration) && duration >= 0) {
 		out.push(formatToolDuration(duration));
@@ -277,7 +285,7 @@ function statusIcon(status: unknown, theme: any): string {
 		case "error":
 			return theme.fg("error", "✗");
 		case "cancelled":
-			return theme.fg("muted", "⊘");
+			return theme.fg("muted", "–");
 		default:
 			// Working 提供活动动画；子调用保留静态进行中标记。
 			return theme.fg("accent", "○");
@@ -339,16 +347,16 @@ export function codemodeCollapsedLines(options: {
 	}
 	for (const call of shown) lines.push(callRow(call, theme, rowWidth));
 
-	const summary = codemodeSummaryParts(calls, codemodeOutputLineCount(result), running);
-	// 上面已有行（子调用或代码摘要）时用 └ 收尾，否则不画衔接符
-	const prefix = lines.length > 0 ? `${INDENT}${fg("dim", "└")} ` : INDENT;
-	// 圆点保持 dim；hover 只高亮可点击文字。
-	const hint = running
-		? ""
-		: ` ${fg("dim", "·")} ${fg(options.hovered ? "text" : "dim", showMoreHintText())}`;
-	const bodyWidth = Math.max(1, rowWidth - visibleWidth(prefix) - visibleWidth(hint));
-	const body = fg(isError ? "error" : "muted", fitSummaryParts(summary, bodyWidth));
-	lines.push(truncateToWidth(`${prefix}${body}${hint}`, rowWidth, ""));
+	const output = codemodeOutputText(result);
+	if (output) {
+		const preview = boundedTextPreview(output, { width: Math.max(1, rowWidth - 2), maxRows: 4 });
+		lines.push(...preview.rows.map((row) => `${INDENT}${fg(isError ? "error" : "muted", row)}`));
+		if (preview.omitted)
+			lines.push(truncateToWidth(`${INDENT}${fg("dim", "… More output hidden")}`, rowWidth));
+		if (output.includes("[Display limit reached"))
+			lines.push(truncateToWidth(fg("dim", "[Display limit reached · output excerpt]"), rowWidth));
+	}
+	if (!lines.length) lines.push(`${INDENT}${fg("muted", running ? "Running…" : "No output")}`);
 	return lines;
 }
 
@@ -362,7 +370,7 @@ export function codemodeExpandedBody(result: any): string {
 				.map((call) => {
 					const name = String(call?.name ?? "tool");
 					const raw = typeof call?.args === "string" ? call.args : "";
-					const meta = callMeta(call);
+					const meta = callMeta(call, false);
 					const head = [name, raw, ...meta].filter(Boolean).join(" ");
 					const error =
 						typeof call?.error === "string" && call.error
@@ -409,10 +417,8 @@ export function createCodemodeResultComponent(options: {
 			});
 		},
 		invalidate(): void {},
-		isCollapsedHintLine(plainLine: string): boolean {
-			return (
-				!running && /(click to show more|to show more| · Expand)\s*$/.test(stripAnsi(plainLine))
-			);
+		isCollapsedHintLine(_plainLine: string): boolean {
+			return false;
 		},
 	};
 }

@@ -9,6 +9,8 @@ import {
 	TOOL_INPUT_COLOR,
 	type ToolCallSummary,
 } from "./names.ts";
+import { toolWasCancelled } from "./tool-state.ts";
+import { boundedTextPreview } from "./preview.ts";
 import { textFromResult } from "./result.ts";
 
 export const FILE_PANEL_TOOL_NAMES = new Set(["grep", "find", "read"]);
@@ -207,9 +209,11 @@ export function createFileToolCallComponent(
 	context: any,
 	theme: any,
 	hovered: () => boolean,
+	showInput = true,
 ): Component {
 	const pending = !context?.result || Boolean(context.isPartial);
 	const error = Boolean(context?.result?.isError || context?.isError);
+	const cancelled = toolWasCancelled(name, context?.result, error);
 	const summary = fileToolSummary(name, args, context?.result, !pending, context?.cwd);
 	const input = new Text(
 		theme.fg(TOOL_INPUT_COLOR, `${summary.payload}${pending ? summary.detail : ""}`),
@@ -220,31 +224,38 @@ export function createFileToolCallComponent(
 		invalidate() {},
 		render(width) {
 			const icon = theme.fg(
-				error ? "error" : pending ? "accent" : "success",
-				error ? "✗" : pending ? "○" : "✓",
+				cancelled ? "dim" : error ? "error" : pending ? "accent" : "success",
+				cancelled ? "–" : error ? "✗" : pending ? "○" : "✓",
 			);
-			const inputLines = !context?.result ? input.render(Math.max(1, width - 2)) : [];
+			const bodyWidth = Math.max(1, width - 2);
+			const inputPreview = boundedTextPreview(
+				`${summary.payload}${pending ? summary.detail : ""}`,
+				{ width: bodyWidth, maxRows: 2, paint: (text) => theme.fg(TOOL_INPUT_COLOR, text) },
+			);
+			const inputLines = !context?.result && context?.expanded ? input.render(bodyWidth) : [];
 			const expandable =
 				!context?.isGrouped?.() &&
-				(Boolean(context?.result) || context?.expanded || inputLines.length > 3);
+				(Boolean(context?.result) || context?.expanded || inputPreview.omitted);
 			const hint = expandable
 				? theme.fg(
 						hovered() ? "text" : "dim",
 						` · ${context?.expanded ? collapseHintText() : showMoreHintText()}`,
 					)
 				: "";
-			const header = `${icon} ${theme.fg("toolTitle", summary.main)}${!pending && summary.detail ? theme.fg("dim", summary.detail) : ""}`;
+			const header = `${icon} ${theme.fg("toolTitle", summary.main)}${cancelled ? theme.fg("dim", " · cancelled") : !pending && summary.detail ? theme.fg("dim", summary.detail) : ""}`;
 			const lines = [renderToolHeaderToWidth(header, hint, width)];
-			if (!context?.result) {
+			if (!context?.result && showInput) {
 				lines.push(
-					...inputLines
-						.slice(0, context?.expanded ? undefined : 3)
-						.map((line) => truncateToWidth(`  ${line}`, width)),
-					"",
+					...(context?.expanded ? inputLines : inputPreview.rows).map((line) =>
+						truncateToWidth(`  ${line}`, width),
+					),
+					...(!context?.expanded && inputPreview.omitted
+						? noticeRows("… More input hidden", theme, width)
+						: []),
 					truncateToWidth(
 						theme.fg(
 							"dim",
-							`  ${context?.executionStarted ? (name === "read" ? "Reading…" : "Searching…") : "Receiving arguments…"}`,
+							`  ${context?.executionStarted ? (name === "read" ? "Reading…" : name === "find" ? "Finding paths…" : "Searching…") : "Receiving arguments…"}`,
 						),
 						width,
 					),
@@ -255,58 +266,70 @@ export function createFileToolCallComponent(
 	};
 }
 
+function noticeRows(notice: string, theme: any, width: number): string[] {
+	return new Text(theme.fg("dim", notice), 0, 0)
+		.render(Math.max(1, width - 2))
+		.map((line) => truncateToWidth(`  ${line}`, width));
+}
+
 export function createFileToolResultComponent(
 	name: string,
 	args: any,
 	result: any,
 	theme: any,
-	partial: boolean,
+	partial = false,
 ): Component {
 	const view = fileToolView(name, args, result);
 	const summary = fileToolSummary(name, args);
-	const input = new Text(
-		theme.fg(TOOL_INPUT_COLOR, `${summary.payload}${partial ? summary.detail : ""}`),
-		0,
-		0,
-	);
-	const preview = view.body.split("\n").slice(0, 4).join("\n");
-	let painted = theme.fg(
-		result?.isError ? "error" : "text",
-		preview ||
-			(view.summary?.toLowerCase().includes("image")
-				? "Image returned"
-				: partial
-					? "Receiving output…"
-					: "(no output)"),
-	);
-	if (name === "read" && !result?.isError && /^lines? /.test(view.summary ?? "") && preview) {
-		try {
-			painted = highlightCode(preview, getLanguageFromPath(args?.path ?? "")).join("\n");
-		} catch {
-			/* Preserve plain text when native highlighting cannot handle this content. */
+	const inputText = `${summary.payload}${partial ? summary.detail : ""}`;
+	const outputText =
+		view.body ||
+		(view.summary?.toLowerCase().includes("image")
+			? "Image returned"
+			: partial
+				? "Receiving output…"
+				: "(no output)");
+	const paint = (text: string): string => {
+		if (name === "read" && !result?.isError && /^lines? /.test(view.summary ?? "") && view.body) {
+			try {
+				return highlightCode(text, getLanguageFromPath(args?.path ?? "")).join("\n");
+			} catch {
+				/* Preserve plain text when native highlighting cannot handle this content. */
+			}
 		}
-	}
-	const output = new Text(painted, 0, 0);
+		return theme.fg(result?.isError && !toolWasCancelled(name, result) ? "error" : "text", text);
+	};
 	return {
 		invalidate() {},
 		render(width) {
 			const bodyWidth = Math.max(1, width - 2);
+			const input = boundedTextPreview(inputText, {
+				width: bodyWidth,
+				maxRows: 2,
+				paint: (text) => theme.fg(TOOL_INPUT_COLOR, text),
+			});
+			const output = boundedTextPreview(outputText, { width: bodyWidth, maxRows: 4, paint });
+			let disclosure = "… More output hidden";
+			if (output.hiddenLines !== undefined && !result?.isError && !partial) {
+				if (name === "read" && /^lines? /.test(view.summary ?? ""))
+					disclosure = `… ${output.hiddenLines} more ${output.hiddenLines === 1 ? "line" : "lines"} in result`;
+				else if (name === "find" && /^\d+ paths?\b/.test(view.summary ?? ""))
+					disclosure = `… ${output.hiddenLines} more ${output.hiddenLines === 1 ? "path" : "paths"} in result`;
+				else if (name === "grep" && /^\d+ match/.test(view.summary ?? "")) {
+					const hiddenMatches = view.body
+						.split("\n")
+						.slice(4)
+						.filter((line) => /^.+?:[1-9]\d*: /.test(line)).length;
+					if (hiddenMatches)
+						disclosure = `… ${hiddenMatches} more ${hiddenMatches === 1 ? "match" : "matches"} in result`;
+				}
+			}
 			return [
-				...input
-					.render(bodyWidth)
-					.slice(0, 3)
-					.map((line) => `  ${line}`),
-				"",
-				...output
-					.render(bodyWidth)
-					.slice(0, 4)
-					.map((line) => `  ${line}`),
-				...view.notices.flatMap((notice) =>
-					new Text(theme.fg("dim", notice), 0, 0)
-						.render(bodyWidth)
-						.slice(0, 2)
-						.map((line) => `  ${line}`),
-				),
+				...input.rows.map((line) => `  ${line}`),
+				...(input.omitted ? noticeRows("… More input hidden", theme, width) : []),
+				...output.rows.map((line) => `  ${line}`),
+				...(output.omitted ? noticeRows(disclosure, theme, width) : []),
+				...view.notices.flatMap((notice) => noticeRows(notice, theme, width)),
 			].map((line) => truncateToWidth(line, width));
 		},
 	};

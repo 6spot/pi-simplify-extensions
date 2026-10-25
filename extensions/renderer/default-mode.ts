@@ -15,6 +15,8 @@ import {
 } from "../utils/patch-keys.ts";
 import { isToolCallHovered } from "./mouse/hover.ts";
 import { isLiveToolCall, toolCardBgSlot } from "./tool/tool-state.ts";
+import { isMcpToolDefinition } from "./tool/mcp-title.ts";
+import { ownsPrivateToolShell } from "./tool/card-family.ts";
 import { ToolGroupComponent } from "./tool/grouping.ts";
 import { getMessageDisplayTheme } from "./tool/message-display.ts";
 import { createCcstyleTool } from "./tool/ccstyle-tool.ts";
@@ -103,14 +105,30 @@ function syncToolShell(component: any, shell: "default" | "self"): void {
 function hasSubagentRenderer(component: any): boolean {
 	return (
 		["subagent", "subagent_task"].includes(component.toolName) &&
+		!isMcpToolDefinition(component.toolDefinition, component.toolName) &&
 		typeof component.toolDefinition?.renderCall === "function"
+	);
+}
+
+function hasPreservedRenderer(component: any): boolean {
+	return (
+		hasSubagentRenderer(component) ||
+		ownsPrivateToolShell(
+			String(component.toolName ?? ""),
+			component.toolDefinition ?? component.builtInToolDefinition,
+		)
 	);
 }
 
 function shouldGloballyStyleTool(component: any): boolean {
 	const definition = component.toolDefinition ?? component.builtInToolDefinition;
 	const toolName = String(component.toolName || definition?.name || "");
-	const useCcstyle = !DEDICATED_RENDERER_TOOLS.has(toolName);
+	const dedicated =
+		DEDICATED_RENDERER_TOOLS.has(toolName) &&
+		!isMcpToolDefinition(definition, toolName) &&
+		(typeof definition?.renderCall === "function" ||
+			typeof definition?.renderResult === "function");
+	const useCcstyle = !dedicated && !ownsPrivateToolShell(toolName, definition);
 	component[COMPONENT_TOOL_RENDER_MODE] = useCcstyle;
 	return useCcstyle;
 }
@@ -230,7 +248,30 @@ function installGlobalToolRendering(
 			? previous.originalGetRenderContext
 			: prototype.getRenderContext;
 	if (isOwnershipAwarePatch(previous)) disconnectGlobalToolRenderPatch(previous);
-	const styledDisplays = new WeakSet<object>();
+	const styledDisplays = new WeakMap<object, { definition: any; call: any; result: any }>();
+	const rememberDisplay = (tool: any) => {
+		const definition = tool.toolDefinition ?? tool.builtInToolDefinition;
+		styledDisplays.set(tool, {
+			definition,
+			call: definition?.renderCall,
+			result: definition?.renderResult,
+		});
+	};
+	const hasCurrentDisplay = (tool: any) => {
+		const definition = tool.toolDefinition ?? tool.builtInToolDefinition;
+		const stamp = styledDisplays.get(tool);
+		return (
+			stamp !== undefined &&
+			stamp.definition === definition &&
+			stamp.call === definition?.renderCall &&
+			stamp.result === definition?.renderResult
+		);
+	};
+	const adoptDisplay = (tool: any) => {
+		if (hasCurrentDisplay(tool)) return;
+		patch.paintCache?.delete(tool);
+		tool.updateDisplay();
+	};
 
 	const patch: GlobalToolRenderPatch = {
 		version: 2,
@@ -265,9 +306,9 @@ function installGlobalToolRendering(
 			return shell;
 		},
 		getCallRenderer: function (this: any, ...args: any[]) {
-			if (patch.active && hasSubagentRenderer(this)) styledDisplays.add(this);
+			if (patch.active && hasPreservedRenderer(this)) rememberDisplay(this);
 			if (patch.active && shouldGloballyStyleTool(this)) {
-				styledDisplays.add(this);
+				rememberDisplay(this);
 				return getGloballyStyledTool(this, patch).renderCall;
 			}
 			return patch.downstream.getCallRenderer.apply(this, args);
@@ -289,8 +330,12 @@ function installGlobalToolRendering(
 		const context = originalGetRenderContext.apply(this, args);
 		if (context && typeof context === "object") {
 			context.result = this.result;
-			if (this.toolName === "update_plan")
-				context.isGrouped = () => this[TOOL_GROUPING_PARENT_KEY] instanceof ToolGroupComponent;
+			context.toolName = this.toolName;
+			context.simplifyMcpSource = isMcpToolDefinition(
+				this.toolDefinition ?? this.builtInToolDefinition,
+				this.toolName,
+			);
+			context.isGrouped = () => this[TOOL_GROUPING_PARENT_KEY] instanceof ToolGroupComponent;
 		}
 		return context;
 	};
@@ -300,12 +345,12 @@ function installGlobalToolRendering(
 		if (!patch.active) return originalRender.call(this, width);
 		if (!shouldGloballyStyleTool(this)) {
 			// Dedicated Subagent renderers also need one adoption after reload/restore.
-			if (hasSubagentRenderer(this) && !styledDisplays.has(this)) this.updateDisplay();
+			if (hasPreservedRenderer(this)) adoptDisplay(this);
 			return originalRender.call(this, width);
 		}
 		// Reload can restore history before this patch is installed. Rebuild the native
 		// call/result components once; repainting their cached lines cannot restyle them.
-		if (!styledDisplays.has(this)) this.updateDisplay();
+		adoptDisplay(this);
 		const cache = patch.paintCache;
 		// Live partial output and elapsed time can change without invalidation.
 		// Keep those rows fresh when Working requests a repaint, including the
@@ -389,24 +434,24 @@ export function installToolExpandedBackground(): () => void {
 		prototype,
 		installed: function (this: any) {
 			original.call(this);
-			if (
-				!patch.active ||
-				(!this.expanded &&
-					!["update_plan", "bash", "grep", "find", "read", "subagent", "subagent_task"].includes(
-						this.toolName,
-					))
-			)
-				return;
+			if (!patch.active) return;
 			const theme = getMessageDisplayTheme();
 			if (!theme?.bg) return;
 			const box = this.contentBox;
 			// 展开最外层卡片：上下左右内间距 1 格
 			if (box) {
-				box.paddingX = 1;
-				box.paddingY = 1;
+				if (this.expanded || shouldGloballyStyleTool(this) || hasSubagentRenderer(this)) {
+					box.paddingX = 1;
+					box.paddingY = this.expanded ? 1 : 0;
+				}
 				if (box.setBgFn) {
 					const slot = toolCardBgSlot(this);
-					box.setBgFn(this.expanded ? (text: string) => theme.bg(slot, text) : undefined);
+					const live = typeof this.resultRendererComponent?.simplifyVisualState === "function";
+					box.setBgFn(
+						this.expanded
+							? (text: string) => theme.bg(live ? toolCardBgSlot(this) : slot, text)
+							: undefined,
+					);
 				}
 			}
 		},

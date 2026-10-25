@@ -56,7 +56,7 @@ test("Subagent native cards stay nonempty while running, expand structurally and
 			) as any;
 			const render = (width = 110) => component.render(width).map(stripAnsi).join("\n");
 			component.markExecutionStarted();
-			const pendingTitle = name === "subagent" ? /reader/ : /subagent_task/;
+			const pendingTitle = name === "subagent" ? /reader/ : /Subagent Task/;
 			assert.match(render(), pendingTitle);
 			component.setExpanded(true);
 			assert.match(render(), pendingTitle, "pending tool with no result remains visible");

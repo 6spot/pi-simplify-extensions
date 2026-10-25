@@ -132,12 +132,14 @@ test("generic collapsed cards keep hints for meaningful Input and retain the exp
 			[{ input: "" }, true],
 			[{ envelope: { value: "kept" } }, true],
 		] as const) {
-			const context = { args, state: {}, toolCallId: "eligibility" };
+			const context = { args, result, isPartial: false, state: {}, toolCallId: "eligibility" };
 			const collapsed = stripVTControlCharacters(
-				tool
-					.renderResult(result, { expanded: false, isPartial: false }, theme, context)
-					.render(110)
-					.join("\n"),
+				[
+					...tool.renderCall(args, theme, context).render(110),
+					...tool
+						.renderResult(result, { expanded: false, isPartial: false }, theme, context)
+						.render(110),
+				].join("\n"),
 			);
 			assert.equal(collapsed.includes("Expand"), expected);
 		}

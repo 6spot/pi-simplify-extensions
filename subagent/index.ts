@@ -28,8 +28,13 @@ import {
 import { Type } from "typebox";
 import { fileURLToPath } from "node:url";
 import { registerTaskManager } from "./background.ts";
-import { createTaskView } from "./view.ts";
-import { createSubagentCallView, createSyncTaskView, type SingleResult } from "./sync-view.ts";
+import { createTaskView, createTaskFallbackView, isTaskCardSnapshot } from "./view.ts";
+import {
+	createSubagentCallView,
+	createSyncTaskView,
+	isSyncTaskRows,
+	type SingleResult,
+} from "./sync-view.ts";
 import type { TaskSnapshot } from "./tasks.ts";
 import { type AgentConfig, type AgentScope, discoverAgents } from "./agents.ts";
 
@@ -742,14 +747,17 @@ export default function (pi: ExtensionAPI) {
 
 		renderResult(result, options, theme, context) {
 			const details = result.details as SubagentDetails | undefined;
-			if (details?.backgroundTask)
+			if (isTaskCardSnapshot(details?.backgroundTask))
 				return createTaskView(
 					[details.backgroundTask],
 					theme,
 					options.expanded,
 					getTaskManager.peek,
 				);
-			if (details?.results?.length)
+			if (
+				isSyncTaskRows(details?.results) &&
+				(details.mode === undefined || ["single", "parallel", "chain"].includes(details.mode))
+			)
 				return createSyncTaskView(details.results, theme, options.expanded, {
 					partial: Boolean(options.isPartial),
 					mode: details.mode,
@@ -761,25 +769,11 @@ export default function (pi: ExtensionAPI) {
 			const isError = Boolean(context?.isError || result.isError);
 			const cancelled =
 				isError && ["Subagent was aborted", "Operation aborted"].includes(output.trim());
-			return createSyncTaskView(
-				[
-					{
-						agent: context?.args?.agent ?? "subagent",
-						task: context?.args?.task ?? "",
-						output,
-						status: options.isPartial
-							? "running"
-							: cancelled
-								? "cancelled"
-								: isError
-									? "failed"
-									: undefined,
-					},
-				],
-				theme,
-				options.expanded,
-				{ partial: Boolean(options.isPartial) },
-			);
+			return createTaskFallbackView(context?.args, result, theme, options.expanded, {
+				isPartial: Boolean(options.isPartial),
+				isError,
+				cancelled,
+			});
 		},
 	});
 }

@@ -8,6 +8,7 @@ import {
 	installDefaultMode,
 	installToolExpandedBackground,
 } from "../extensions/renderer/default-mode.ts";
+import { expandedIoForTool } from "../extensions/renderer/tool/tool-io.ts";
 import { bashStatusText } from "../extensions/renderer/tool/bash.ts";
 import { installToolGrouping, ToolGroupComponent } from "../extensions/renderer/tool/grouping.ts";
 import { setMessageDisplayTheme } from "../extensions/renderer/tool/message-display.ts";
@@ -69,14 +70,14 @@ test("Bash streams a real output tail and replaces it with the final result, kee
 		const settled = render(tool);
 		assert.match(settled, /✓ Bash · exit 0 · 1\.2s · [^\n]*Expand/);
 		assert.equal(settled.match(/Expand/g)?.length, 1);
-		assert.match(settled, /\(no output\)/);
+		assert.match(settled, /No output/);
 		assert.doesNotMatch(settled, /sixth|4\.2s|10\.0s/);
 		assert.equal(tool.render(100), tool.render(100), "settled paints keep the normal cache");
 		tool.updateResult(
 			output("real failure\nCommand exited with code 7", { isError: true, durationMs: 1_500 }),
 		);
 		assert.match(render(tool), /✗ Bash · exit 7 · 1\.5s · [^\n]*Expand/);
-		assert.doesNotMatch(render(tool), /✓ Bash|exit 0|\(no output\)/);
+		assert.doesNotMatch(render(tool), /✓ Bash|exit 0|No output/);
 		assert.equal(slots.length, 0, "collapsed Bash including errors is transparent");
 		tool.setExpanded(true);
 		render(tool);
@@ -106,7 +107,7 @@ test("Bash cancellation, timeout, and unknown errors preserve their actual reaso
 			const tool = nativeTool();
 			tool.updateResult(result);
 			const painted = render(tool);
-			assert.match(painted, /✗ Bash/);
+			assert.match(painted, label === "Cancelled" ? /– Bash/ : /✗ Bash/);
 			assert.ok(painted.includes(text.split("\n").at(-1)!));
 			assert.doesNotMatch(painted, /exit 0|✓ Bash|\d+ms/);
 		}
@@ -153,7 +154,9 @@ test("expanded Bash retains long available output, native truncation notes, comm
 		assert.match(render(pending), /○ Bash[^\n]* · [^\n]*Expand/);
 		pending.setExpanded(true);
 		assert.match(render(pending), /○ Bash[^\n]* · Collapse/);
-		assert.match(render(pending), /LONG_COMMAND_END/);
+		assert.match(render(pending), /Input · Open preview/);
+		assert.doesNotMatch(render(pending), /LONG_COMMAND_END/);
+		assert.match(expandedIoForTool(pending)?.getInputBody() ?? "", /LONG_COMMAND_END/);
 		assert.doesNotMatch(render(pending), /Expand/);
 		const tool = nativeTool("long", { command: "printf '中文路径 🧪'\nprintf second", timeout: 5 });
 		const long = Array.from({ length: 80 }, (_, index) => `${index} ${"a".repeat(250)}`).join("\n");

@@ -8,8 +8,10 @@ import {
 	renderCollapsedToolResult,
 	toolViewportWidth,
 } from "./result.ts";
-import { TOOL_INPUT_COLOR, showMoreHintText } from "./names.ts";
+import { TOOL_INPUT_COLOR, renderToolHeaderToWidth } from "./names.ts";
 import { createCodeBlockHighlighter } from "./diff/diff-highlight.ts";
+
+const OPEN_PREVIEW_LABEL = "Open preview";
 
 export class ExpandedToolResultText {
 	private text: string;
@@ -213,7 +215,7 @@ export class ExpandedToolIoView {
 	}
 
 	getOutputBody(): string {
-		return this.outputBody.trim() ? this.outputBody : "Done";
+		return this.outputBody.trim() ? this.outputBody : "No output";
 	}
 
 	setHoveredSection(section: ToolIoSection | null): void {
@@ -236,9 +238,9 @@ export class ExpandedToolIoView {
 	/** True when the plain truncation footer carries show-more. Input 续行带 │，Output 不带。 */
 	matchShowMoreLine(plainLine: string): ToolIoSection | null {
 		const line = plainLine.replace(/\x1b\[[0-9;]*m/g, "");
-		if (!line.includes(` · ${showMoreHintText()}`) || !/\d+ more lines/.test(line)) return null;
-		if (this.truncated.input && line.includes("│")) return "input";
-		if (this.truncated.output) return "output";
+		if (!line.includes(` · ${OPEN_PREVIEW_LABEL}`)) return null;
+		if (this.truncated.input && /├ Input/.test(line)) return "input";
+		if (this.truncated.output && /└ Output/.test(line)) return "output";
 		return null;
 	}
 
@@ -257,7 +259,7 @@ export class ExpandedToolIoView {
 	/** Column range (1-based, visible cells) of show-more on a rendered header, if present. */
 	showMoreHitbox(plainLine: string): { startCol: number; endCol: number } | null {
 		const line = plainLine.replace(/\x1b\[[0-9;]*m/g, "");
-		const label = ` · ${showMoreHintText()}`;
+		const label = ` · ${OPEN_PREVIEW_LABEL}`;
 		const idx = line.lastIndexOf(label);
 		if (idx < 0) return null;
 		const before = line.slice(0, idx);
@@ -290,7 +292,14 @@ export class ExpandedToolIoView {
 				"accent",
 				typeof theme.bold === "function" ? theme.bold(label) : label,
 			);
-			lines.push(truncateToWidth(mark + title, safeWidth, ""));
+			const section: ToolIoSection = label === "Input" ? "input" : "output";
+			const hint = this.truncated[section]
+				? theme.fg("dim", " · ") +
+					theme.fg(this.hoveredSection === section ? "text" : "dim", OPEN_PREVIEW_LABEL)
+				: "";
+			const row = renderToolHeaderToWidth(mark + title, hint, safeWidth);
+			if (hint && row.includes(OPEN_PREVIEW_LABEL)) this.showMoreHeaderRows[section] = lines.length;
+			lines.push(row);
 		};
 
 		const pushRailLine = (styledContent: string, continued = true) => {
@@ -340,18 +349,14 @@ export class ExpandedToolIoView {
 			if (truncated) {
 				const hidden = Math.max(0, wrapped.length - visible.length);
 				if (hidden > 0) {
-					// 省略号已经表达了「还有」，计数前不再加 +。
 					const note = opts.footerNote ? theme.fg("dim", ` · ${opts.footerNote}`) : "";
-					// hover 只高亮文字，圆点保持 dim（与 group hint 一致）。
-					const more =
-						theme.fg("dim", " ·") +
-						theme.fg(
-							this.hoveredSection === opts.section ? "text" : "dim",
-							` ${showMoreHintText()}`,
-						);
-					pushRailLine(theme.fg("dim", `… ${hidden} more lines`) + note + more, opts.continued);
-					this.showMoreHeaderRows[opts.section] = lines.length - 1;
+					pushRailLine(theme.fg("dim", `… ${hidden} more display rows`) + note, opts.continued);
 				}
+			}
+			if (truncated) {
+				const sourceLimit = sourceLines.find((line) => line.startsWith("[Display limit reached"));
+				if (sourceLimit && !visible.some((line) => line.includes(sourceLimit)))
+					pushRailLine(theme.fg("dim", sourceLimit), opts.continued);
 			}
 			return truncated;
 		};
@@ -424,6 +429,16 @@ export class ExpandedToolIoView {
 		this.cachedWidth = undefined;
 		this.cachedLines = undefined;
 	}
+}
+
+export function expandedIoForTool(component: any): ExpandedToolIoView | null {
+	if (isExpandedToolIoView(component?.resultRendererComponent))
+		return component.resultRendererComponent;
+	if (!component?.result) {
+		const view = component?.rendererState?.ccstyleIoView ?? component?.state?.ccstyleIoView;
+		if (isExpandedToolIoView(view)) return view;
+	}
+	return null;
 }
 
 export function isExpandedToolIoView(value: unknown): value is ExpandedToolIoView {
@@ -511,16 +526,24 @@ export type ToolInputBody = { text: string; codeBlock?: InputCodeBlock };
 const INPUT_CODE_LANGUAGES: Record<string, string> = { code: "javascript" };
 
 /** Pretty-print tool call args for the expanded Input section. */
+function clippedInput(text: string, maxChars: number): string {
+	if (text.length <= maxChars) return text;
+	let end = Math.max(0, maxChars);
+	if (end > 0 && /[\uD800-\uDBFF]/.test(text[end - 1]!) && /[\uDC00-\uDFFF]/.test(text[end] ?? ""))
+		end--;
+	return `${text.slice(0, end)}…\n[Display limit reached · input excerpt]`;
+}
+
 export function formatToolInputBody(args: unknown, maxChars = 8_000): ToolInputBody {
 	if (args === undefined || args === null) return { text: "" };
 	if (typeof args !== "object") {
 		const text = sanitizeToolResultText(String(args));
-		return { text: text.length > maxChars ? `${text.slice(0, maxChars)}…` : text };
+		return { text: clippedInput(text, maxChars) };
 	}
 	if (Array.isArray(args)) {
 		try {
 			const json = JSON.stringify(args, null, 2);
-			return { text: json.length > maxChars ? `${json.slice(0, maxChars)}…` : json };
+			return { text: clippedInput(json, maxChars) };
 		} catch {
 			return { text: sanitizeToolResultText(String(args)) };
 		}
@@ -604,7 +627,7 @@ export function formatToolInputBody(args: unknown, maxChars = 8_000): ToolInputB
 	}
 	const text = lines.join("\n");
 	// 截断后的行号与着色行不再对齐，这时只给纯文本
-	if (text.length > maxChars) return { text: `${text.slice(0, maxChars)}…` };
+	if (text.length > maxChars) return { text: clippedInput(text, maxChars) };
 	return codeBlock ? { text, codeBlock } : { text };
 }
 
@@ -612,7 +635,7 @@ export function formatToolInputArgs(args: unknown, maxChars = 8_000): string {
 	return formatToolInputBody(args, maxChars).text;
 }
 
-function hasExpandableResult(text: string): boolean {
+export function hasExpandableResult(text: string): boolean {
 	return (
 		text
 			.trim()
@@ -731,7 +754,8 @@ const ioViewInvalidators = new WeakMap<ExpandedToolIoView, () => void>();
 function rememberIoView(context: any, view: ExpandedToolIoView): void {
 	if (!context || typeof context !== "object") return;
 	if (typeof context.invalidate === "function") {
-		ioViewInvalidators.set(view, () => context.invalidate());
+		const invalidate = context.invalidate;
+		ioViewInvalidators.set(view, () => invalidate());
 	}
 	if (!context.state || typeof context.state !== "object") context.state = {};
 	context.state.ccstyleIoView = view;

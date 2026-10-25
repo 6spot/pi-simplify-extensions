@@ -81,7 +81,7 @@ test("formatToolInputBody：单独的 code 省略标签并标记代码块，截�
 	assert.equal(formatToolInputBody({ command: "echo hi\necho bye" }).codeBlock, undefined);
 	// 正文截断后行号对不上，只给纯文本
 	const huge = formatToolInputBody({ code: `${"x".repeat(9000)}\nmore` });
-	assert.ok(huge.text.endsWith("…"));
+	assert.match(huge.text, /…\n\[Display limit reached · input excerpt\]$/);
 	assert.equal(huge.codeBlock, undefined);
 });
 
@@ -207,11 +207,16 @@ test("ExpandedToolIoView wraps Input/Output at 80% of the viewport", () => {
 	const lines = view.render(100);
 	assert.ok(lines.every((line) => visibleWidth(line) <= 80));
 	assert.ok(
-		lines.some((line) => line.includes("more lines") && line.includes(SHOW_MORE_LABEL)),
-		"truncation footer carries show more",
+		lines.some((line) => /more display rows/.test(line)),
+		"hidden rows are disclosed",
 	);
-	assert.ok(!lines.find((line) => line.includes("Input"))?.includes(SHOW_MORE_LABEL));
-	assert.ok(!lines.find((line) => line.includes("Output"))?.includes(SHOW_MORE_LABEL));
+	assert.ok(lines.find((line) => line.includes("Input"))?.includes("Open preview"));
+	assert.ok(lines.find((line) => line.includes("Output"))?.includes("Open preview"));
+	assert.ok(
+		lines
+			.filter((line) => line.includes("more display rows"))
+			.every((line) => !line.includes("Open preview")),
+	);
 });
 
 test("ExpandedToolIoView shows Expand when Input/Output exceed the line cap", () => {
@@ -230,27 +235,22 @@ test("ExpandedToolIoView shows Expand when Input/Output exceed the line cap", ()
 	const view = new ExpandedToolIoView(theme, longInput, longOutput, false, 5, 5);
 	const rawLines = view.render(80);
 	const lines = rawLines.map((line) => line.replace(/\x1b\[[0-9;]*m/g, ""));
-	const inputFooter = lines.find((line) => line.includes("│") && line.includes("more lines"));
-	const outputFooter = lines.find(
-		(line) => !line.includes("│") && line.includes("more lines") && line.includes(SHOW_MORE_LABEL),
-	);
-	assert.ok(inputFooter?.includes(SHOW_MORE_LABEL), "Input truncation footer shows show more");
-	assert.ok(outputFooter?.includes(SHOW_MORE_LABEL), "Output truncation footer shows show more");
-	assert.equal(view.matchShowMoreLine(inputFooter!), "input");
-	assert.equal(view.matchShowMoreLine(outputFooter!), "output");
-	assert.ok(!lines.find((line) => line.includes("Input"))?.includes(SHOW_MORE_LABEL));
-	view.setHoveredSection("input");
-	const hoveredInput = view
-		.render(80)
-		.find((line) => line.includes("│") && line.includes("more lines"));
-	const hoveredOutput = view
-		.render(80)
-		.find((line) => !line.includes("│") && line.includes("more lines"));
+	const inputHeader = lines.find((line) => /├ Input/.test(line))!;
+	const outputHeader = lines.find((line) => /└ Output/.test(line))!;
+	assert.ok(inputHeader.includes("Open preview"));
+	assert.ok(outputHeader.includes("Open preview"));
+	assert.equal(view.matchShowMoreLine(inputHeader), "input");
+	assert.equal(view.matchShowMoreLine(outputHeader), "output");
 	assert.ok(
-		hoveredInput?.includes(`\x1b[90m ·\x1b[39m\x1b[37m Expand\x1b[39m`),
-		"hover keeps the bullet dim and highlights only the text",
+		lines
+			.filter((line) => line.includes("more display rows"))
+			.every((line) => view.matchShowMoreLine(line) === null),
 	);
-	assert.ok(hoveredOutput?.includes(`\x1b[90m ·\x1b[39m\x1b[90m Expand\x1b[39m`));
+	view.setHoveredSection("input");
+	const hoveredInput = view.render(80).find((line) => line.includes("Input"));
+	const hoveredOutput = view.render(80).find((line) => line.includes("Output"));
+	assert.ok(hoveredInput?.includes("\x1b[37mOpen preview\x1b[39m"));
+	assert.ok(hoveredOutput?.includes("\x1b[90mOpen preview\x1b[39m"));
 });
 
 test("ExpandedToolIoView records exact show-more header rows, not body text", () => {
@@ -263,18 +263,15 @@ test("ExpandedToolIoView records exact show-more header rows, not body text", ()
 		},
 	};
 	// Body text that would false-positive a whole-buffer Input/show-more scan.
-	const decoy = `note Input ${SHOW_MORE_LABEL}\n${Array.from({ length: 12 }, (_, i) => `out ${i}`).join("\n")}`;
+	const decoy = `note Input · Open preview\n${Array.from({ length: 12 }, (_, i) => `out ${i}`).join("\n")}`;
 	const view = new ExpandedToolIoView(theme, "", decoy, false, 3, 3);
 	const lines = view.render(80);
 	const headers = view.showMoreHeaderLineIndexes();
 	assert.equal(headers.length, 1);
 	assert.equal(headers[0]?.section, "output");
-	assert.ok(
-		(headers[0]?.line ?? -1) > 0,
-		"show-more sits on the truncation footer, not the header",
-	);
+	assert.equal(headers[0]?.line, 0, "the Output title owns the preview control");
 	const decoyRow = lines.findIndex(
-		(line, index) => index > 0 && line.includes("Input") && line.includes(SHOW_MORE_LABEL),
+		(line, index) => index > 0 && line.includes("Input") && line.includes("Open preview"),
 	);
 	assert.ok(decoyRow > 0, "body still paints the decoy text");
 	assert.ok(!headers.some((h) => h.line === decoyRow));

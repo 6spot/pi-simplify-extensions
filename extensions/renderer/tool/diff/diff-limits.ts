@@ -26,14 +26,9 @@ export function clampDiffLinesToWidth(lines: string[], width: number): string[] 
 	);
 }
 
-function renderDiffSpacerLine(width: number): string {
-	const safeWidth = Math.max(0, width);
-	return safeWidth > 0 ? " ".repeat(safeWidth) : "";
-}
-
 /**
- * Body lines to render before the remainder hint. Expanded diffs are never capped:
- * clicking `click to show more` expands the card to the whole diff.
+ * Body lines before the passive remainder disclosure. Expanded diffs are not capped;
+ * the tool title owns expansion and collapse.
  */
 export function resolveDiffDisplayLimit(expanded: boolean, maxCollapsedLines: number): number {
 	if (expanded) return Number.POSITIVE_INFINITY;
@@ -104,7 +99,8 @@ export function applyLineLimit(
 	 * remainder so the collapse hint still reflects total hidden content.
 	 */
 	unprocessedLogicalRows = 0,
-	hovered = false,
+	_hovered = false,
+	lineCountReliable = true,
 ): { lines: string[]; hintLine?: string } {
 	const limit = resolveDiffDisplayLimit(expanded, maxCollapsedLines);
 	const safeUnprocessed = Math.max(0, unprocessedLogicalRows);
@@ -127,25 +123,16 @@ export function applyLineLimit(
 		{
 			remainingLines: remaining,
 			hiddenHunks,
+			lineCountReliable,
 		},
 		width,
 		DIFF_WIDTH_OPS,
 	);
 
-	const clickLabel = showMoreHintText();
-	const clickIndex = hintText.lastIndexOf(clickLabel);
-	// 展开态不会再截断，剩下的分支必是折叠态提示。
-	// 提示文本与其余折叠卡一致用 dim，hover 时 clickLabel 提到 text。
-	const styledHint =
-		clickIndex >= 0
-			? theme.fg("muted", hintText.slice(0, clickIndex)) +
-				theme.fg(hovered ? "text" : "dim", clickLabel) +
-				theme.fg("muted", hintText.slice(clickIndex + clickLabel.length))
-			: theme.fg("muted", hintText);
+	const styledHint = theme.fg("muted", hintText);
 	return {
 		lines: [
 			...shown.map((row) => clampDiffLineToWidth(row.text, width)),
-			renderDiffSpacerLine(width),
 			clampDiffLineToWidth(styledHint, width),
 		],
 		hintLine: hintText,

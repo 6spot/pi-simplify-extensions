@@ -66,7 +66,7 @@ test("mixed tools group across three empty separators while edit/write and conte
 		const collapsed = renderedGroup
 			.map((line: string) => line.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, ""))
 			.filter((line: string) => line.trim());
-		assert.match(collapsed[0], /^ ○ Multiple Tools: 3 running · Read×1, Bash×1, Grep×1 · Expand$/);
+		assert.match(collapsed[0], /^ ○ Multiple Tools · 3 running · Expand$/);
 		assert.equal(collapsed.filter((line: string) => line.trim()).length, 4);
 		assert.match(collapsed[1], /^ ├ ○ Read /);
 		assert.match(collapsed[2], /^ ├ ○ Bash /);
@@ -75,7 +75,7 @@ test("mixed tools group across three empty separators while edit/write and conte
 		grep.updateResult({ content: [], isError: true });
 		assert.match(
 			parent.children[0].render(100).find((line: string) => line.trim())!,
-			/1 running.*1 done.*1 failed/,
+			/1 done.*1 running.*1 failed/,
 		);
 		const group = parent.children[0] as ToolGroupComponent;
 		group.setExpanded(true);
@@ -225,7 +225,7 @@ test("expanded group rows follow the worst tool status", () => {
 		read.updateResult({ content: [{ type: "text", text: "ok" }], isError: false });
 		const partiallySettled = group.render(80);
 		assert.notStrictEqual(partiallySettled, running, "child status changes invalidate cached rows");
-		assert.match(partiallySettled[1], /1 running · 1 done/);
+		assert.match(partiallySettled[1], /1 done · 1 running/);
 		bash.updateResult({ content: [{ type: "text", text: "done" }], isError: false });
 		const settled = group.render(80);
 		assert.notStrictEqual(settled, partiallySettled, "status change drops the stale expanded rows");
@@ -264,9 +264,9 @@ test("external task, skill, and plan tools keep reference summaries in groups", 
 		parent.addChild(tool("Skill", "skill", { name: "deploy" }));
 		parent.addChild(tool("EnterPlanMode", "plan"));
 		const rendered = parent.children[0].render(160).join("\n");
-		assert.match(rendered, /Task Create Fix tests/);
-		assert.match(rendered, /Skill deploy/);
-		assert.match(rendered, /Enter Plan Mode enable read-only planning/);
+		assert.match(rendered, /Tool · TaskCreate Fix tests/);
+		assert.match(rendered, /Tool · Skill deploy/);
+		assert.match(rendered, /Tool · EnterPlanMode enable read-only planning/);
 
 		const agentParent = new Container() as any;
 		const agent = tool("Agent", "agent", { description: "再次测试 tool 调用" });
@@ -281,12 +281,9 @@ test("external task, skill, and plan tools keep reference summaries in groups", 
 			.render(160)
 			.map((line: string) => line.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, ""))
 			.filter((line: string) => line.trim());
-		assert.match(
-			agentLines[0],
-			/^ ● Multiple Tools: 2 done · Agent×1, Get Subagent Result×1 · Expand$/,
-		);
-		assert.equal(agentLines[1], " ├ ✓ Agent 再次测试 tool 调用");
-		assert.equal(agentLines[2], " └ ✓ Get Subagent Result 6a559462-95d0-40b");
+		assert.match(agentLines[0], /^ ● Multiple Tools · 2 done · Expand$/);
+		assert.equal(agentLines[1], " ├ ✓ Tool · Agent 再次测试 tool 调用");
+		assert.equal(agentLines[2], " └ ✓ Tool · get_subagent_result 6a559462-95d0-40b");
 	} finally {
 		hooks.shutdown();
 	}
@@ -510,7 +507,7 @@ test("powershell 分组行显示具体命令（issue 26）", () => {
 		parent.addChild(started("powershell", "ps-2", { command: "$env:FOO = 'bar'" }));
 		const group = parent.children[0] as ToolGroupComponent;
 		const collapsed = plain(group.render(120));
-		assert.match(collapsed[0], /^ ○ PowerShell: 2 running/);
+		assert.match(collapsed[0], /^ ○ Multiple Tools · 2 running/);
 		assert.match(collapsed[1], /PowerShell Get-ChildItem -Recurse$/);
 		assert.match(collapsed[2], /PowerShell \$env:FOO = 'bar'$/);
 	} finally {
@@ -570,9 +567,9 @@ test("折叠分组行：codemode 报结果统计，没结果时退回代码预�
 			.render(120)
 			.map((line: string) => line.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "").trimEnd());
 
-		assert.match(rows[1]!, /^ ○ Codemode: 1 running · 2 done/);
-		assert.equal(rows[2], " ├ ✓ Codemode 1 call · 1 line output");
-		assert.equal(rows[3], " ├ ✓ Codemode 2 calls · 2 lines output");
+		assert.match(rows[1]!, /^ ○ Multiple Tools · 2 done · 1 running/);
+		assert.equal(rows[2], " ├ ✓ Codemode 1 done · 1 line output");
+		assert.equal(rows[3], " ├ ✓ Codemode 2 done · 2 lines output");
 		// 还没结果：退回参数摘要，同样不带 code 预览
 		assert.match(rows[4]!, /^ └ ○ Codemode$/);
 	} finally {
@@ -646,7 +643,7 @@ test("group headers share the single-card viewport limit without stretching shor
 	}
 });
 
-test("组头列表用人性化名并恒带次数；组内 shell 行只报耗时", () => {
+test("组头统一身份与数量；组内 shell 行保留命令和实际耗时", () => {
 	const hooks = installToolGrouping(() => true);
 	const plain = (lines: string[]) =>
 		lines.map((line) => line.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "")).filter((line) => line.trim());
@@ -664,7 +661,7 @@ test("组头列表用人性化名并恒带次数；组内 shell 行只报耗时"
 		parent.addChild(ps);
 		const rows = plain((parent.children[0] as ToolGroupComponent).render(140));
 		// 单组标题用 toolTitle，列表跟子行同一套写法；各跑一次也报 ×1。
-		assert.equal(rows[0], " ● Multiple Tools: 2 done · Bash×1, PowerShell×1 · Expand");
+		assert.equal(rows[0], " ● Multiple Tools · 2 done · Expand");
 		// 只报耗时：行数在折叠卡里冗余，展开就能看到。
 		assert.equal(rows[1], " ├ ✓ Bash npm test · 12.4s");
 		assert.equal(rows[2], " └ ✓ PowerShell Get-ChildItem · 300ms");

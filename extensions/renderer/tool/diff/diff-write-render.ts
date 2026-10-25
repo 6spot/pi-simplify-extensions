@@ -292,58 +292,16 @@ function renderWriteOverwriteGuardRows(
 	return renderSingleDiffRow(buildWriteOverwriteGuardText(guard, width), "warning", width, theme);
 }
 
-/** Folded write with `writeDiffCollapsedLines: 0`: `↳ diff +A -D · created · click to show more`. */
+/** A zero-row preview still discloses hidden content; the tool title owns controls and counts. */
 function renderWriteCollapsedHintLine(
-	wasOverwrite: boolean,
+	_wasOverwrite: boolean,
 	width: number,
 	theme: DiffTheme,
-	hovered: boolean,
-	headerLabel?: string,
-	stats?: { added: number; removed: number },
+	_hovered: boolean,
+	_headerLabel?: string,
+	_stats?: { added: number; removed: number },
 ): string[] {
-	const safeWidth = normalizeDiffRenderWidth(width);
-	if (safeWidth === 0) {
-		return [""];
-	}
-	const actionLabel = headerLabel?.trim() || (wasOverwrite ? "overwritten" : "created");
-	const clickLabel = showMoreHintText();
-	const counts = stats ? `+${stats.added} -${stats.removed}` : "";
-	const candidates = stats
-		? [
-				`↳ diff ${counts} · ${actionLabel} · ${clickLabel}`,
-				`↳ diff ${counts} · ${clickLabel}`,
-				`↳ diff ${counts} · ${actionLabel}`,
-				`↳ diff ${counts}`,
-				`↳ ${counts} · ${clickLabel}`,
-				`↳ ${actionLabel} · ${clickLabel}`,
-				`↳ ${actionLabel}`,
-				actionLabel,
-				"…",
-			]
-		: [`↳ ${actionLabel} · ${clickLabel}`, `↳ ${actionLabel}`, actionLabel, "…"];
-	let text = candidates[candidates.length - 1] ?? "…";
-	for (const candidate of candidates) {
-		if (visibleWidth(candidate) <= safeWidth) {
-			text = candidate;
-			break;
-		}
-	}
-	if (visibleWidth(text) > safeWidth) {
-		text = truncateToWidth(text, safeWidth, "");
-	}
-	const styled = styleDiffSummaryLine(text, stats, clickLabel, theme, hovered);
-	return [clampDiffLineToWidth(styled, safeWidth)];
-}
-
-/**
- * 折叠 0 行预览时计数由正文那行显示（`↳ diff +A -D · created · click to show more`），
- * 标题不再重复。compact 与 default 两个模式的写标题共用这条口径。
- */
-export function writeStatsInCollapsedBody(
-	expanded: boolean,
-	display: Pick<ToolDisplayConfig, "writeDiffCollapsedLines">,
-): boolean {
-	return !expanded && resolveWriteCollapsedLimit(display) === 0;
+	return renderSingleDiffRow("… Diff preview hidden", "muted", width, theme);
 }
 
 /**
@@ -429,14 +387,9 @@ export function renderWriteDiffResult(
 
 	return {
 		[RICH_DIFF_COMPONENT]: true,
-		/** 鼠标层只在真正的 remainder 行上提供展开入口。 */
-		isCollapsedHintLine(plainLine: string): boolean {
-			const hint = cache.getHintLine();
-			return hint !== undefined && normalizeCollapsedHintLine(plainLine) === hint;
-		},
-		/** 折叠 0 行预览时正文那行自带 +A -D：标题不再重复计数。 */
-		bodyShowsStats(): boolean {
-			return writeStatsInCollapsedBody(options.expanded, resolveLiveDisplayConfig(config));
+		/** Passive disclosure only; the title owns expand/collapse. */
+		isCollapsedHintLine(_plainLine: string): boolean {
+			return false;
 		},
 		render(width: number): string[] {
 			// Live config: panel can change indicator/wrap/limits after this component is created.
@@ -572,10 +525,12 @@ export function renderWriteDiffResult(
 				theme,
 				unprocessedLogicalRows,
 				hovered,
+				!wordWrap && unprocessedLogicalRows === 0,
 			);
 			const frame = renderDiffFrameLine(safeWidth, theme);
-			const renderedLines =
-				mode === "unified"
+			const renderedLines = !options.expanded
+				? bodyWithLimit.lines
+				: mode === "unified"
 					? [header, frame, ...bodyWithLimit.lines, frame]
 					: [header, ...bodyWithLimit.lines];
 			const finalLines = clampDiffLinesToWidth(renderedLines, safeWidth);

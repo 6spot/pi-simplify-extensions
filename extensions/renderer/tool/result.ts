@@ -1,5 +1,5 @@
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import { inspect } from "node:util";
+import { argumentPreview } from "../../utils/argument-preview.ts";
 import { config } from "../../config/config.ts";
 import { sanitizeToolResultText } from "../../utils/tool-result-sanitize.ts";
 import { oneLine } from "../../utils/format.ts";
@@ -66,22 +66,56 @@ function rawTextFromResult(result: any): string {
 		: "";
 }
 
-function detailsFromResult(result: any): string {
-	if (result?.details === undefined) return "";
-	const details =
-		typeof result.details === "string"
-			? result.details
-			: inspect(result.details, { depth: 8, breakLength: 100, compact: false });
-	return sanitizeToolResultText(details, 16_384);
+function detailsFromResult(result: any): { text: string; displayLimited: boolean } {
+	const value = result?.details !== undefined ? result.details : result?.structuredContent;
+	if (value === undefined) return { text: "", displayLimited: false };
+	if (ArrayBuffer.isView(value) || value instanceof ArrayBuffer)
+		return { text: "Binary result", displayLimited: false };
+	const rawString = typeof value === "string";
+	const details = rawString ? value : argumentPreview(value);
+	const displayLimited = details.length > 16_384 || (!rawString && details.endsWith("…"));
+	const text = sanitizeToolResultText(details, 16_384);
+	return {
+		text:
+			(text || (rawString ? "" : "Result preview unavailable")) +
+			(displayLimited ? "\n[Display limit reached · structured result excerpt]" : ""),
+		displayLimited,
+	};
+}
+
+export function resultTextView(
+	result: any,
+	expanded = false,
+): { text: string; displayLimited: boolean } {
+	const raw = rawTextFromResult(result);
+	const displayLimited = raw.length > 16_384;
+	const content =
+		sanitizeToolResultText(raw, 16_384) +
+		(displayLimited ? "\n[Display limit reached · output excerpt]" : "");
+	if (!content) {
+		const detail = detailsFromResult(result);
+		if (detail.text) return detail;
+		const blocks = Array.isArray(result?.content) ? result.content : [];
+		return {
+			text: blocks.some((item: any) => item?.type === "image")
+				? "Image result"
+				: blocks.some((item: any) => item?.type !== "text" || typeof item?.text !== "string")
+					? "Result preview unavailable"
+					: "",
+			displayLimited: false,
+		};
+	}
+	if (!expanded) return { text: content, displayLimited };
+	const details = detailsFromResult(result);
+	return {
+		text:
+			!details.text || details.text === content ? content : `${content}\nDetails:\n${details.text}`,
+		displayLimited: displayLimited || details.displayLimited,
+	};
 }
 
 export function textFromResult(result: any, expanded = false): string {
-	// Compact previews only need short text; bound sanitize work.
-	const content = sanitizeToolResultText(rawTextFromResult(result), 16_384);
-	const details = detailsFromResult(result);
-	if (!content) return details;
-	if (!expanded || !details || details === content) return content;
-	return `${content}\nDetails:\n${details}`;
+	return resultTextView(result, expanded).text;
 }
 
 export function outputLineCount(result: any): number {
@@ -118,10 +152,15 @@ export function collapsedResultSummary(options: {
 }
 
 /** Shell 面板与分组共用：优先实际记录，历史结果不凭空创建计时起点。 */
-export function toolElapsedMs(context: any, isPartial: boolean): number | undefined {
+export function toolElapsedMs(
+	context: any,
+	isPartial: boolean,
+	shellMetadata = true,
+): number | undefined {
 	const recorded = context?.durationMs;
 	if (!isPartial && typeof recorded === "number" && Number.isFinite(recorded) && recorded >= 0)
 		return recorded;
+	if (!shellMetadata) return undefined;
 	const seconds = context?.result?.structuredContent?.wall_time_seconds;
 	if (!isPartial && typeof seconds === "number" && Number.isFinite(seconds) && seconds >= 0)
 		return seconds * 1000;
@@ -142,8 +181,8 @@ export function formatToolDuration(ms: number): string {
 	const totalSeconds = Math.floor(seconds);
 	const minutes = Math.floor(totalSeconds / 60);
 	const remainder = totalSeconds % 60;
-	if (minutes < 60) return `${minutes}m ${remainder}s`;
-	return `${Math.floor(minutes / 60)}h ${minutes % 60}m ${remainder}s`;
+	if (minutes < 60) return `${minutes}m${remainder}s`;
+	return `${Math.floor(minutes / 60)}h${String(minutes % 60).padStart(2, "0")}m`;
 }
 /** 截断体末行 `… N more lines` 旁的展开提示，点击打开全量预览。 */
 export const SHOW_MORE_LABEL = "· Expand";

@@ -2,10 +2,12 @@ import { Text, truncateToWidth, type Component } from "@earendil-works/pi-tui";
 import { sanitizeToolResultText } from "../../utils/tool-result-sanitize.ts";
 import {
 	collapseHintText,
+	humanizeToolLabel,
 	renderToolHeaderToWidth,
 	showMoreHintText,
 	TOOL_INPUT_COLOR,
 } from "./names.ts";
+import { boundedTextPreview } from "./preview.ts";
 import { textFromResult } from "./result.ts";
 
 /** Preserve the returned output and native truncation/path notes, including on errors. */
@@ -16,12 +18,18 @@ export function bashOutputText(result: any): string {
 				.map((part: any) => part.text)
 				.join("\n")
 		: "";
+	const structured = result?.structuredContent;
+	const fallback =
+		structured && (structured.exit_code !== undefined || structured.wall_time_seconds !== undefined)
+			? typeof structured.error === "string"
+				? structured.error
+				: result?.details === undefined
+					? ""
+					: textFromResult({ ...result, structuredContent: undefined }, true)
+			: textFromResult(result, true);
 	return sanitizeToolResultText(
-		text ||
-			(typeof result?.structuredContent?.output === "string"
-				? result.structuredContent.output
-				: textFromResult(result, true)),
-	).trimEnd();
+		text || (typeof structured?.output === "string" ? structured.output : fallback),
+	);
 }
 
 /** Only report an exit code/reason actually supplied by Pi; output prose is not status. */
@@ -37,49 +45,66 @@ export function bashStatusText(result: any, isPartial: boolean): string | undefi
 	if (/(?:^|\n)Command timed out after [^\n]+\s*$/.test(text)) return "Timed out";
 }
 
-function commandView(args: any, theme: any): Text {
-	const command =
-		typeof args?.command === "string" && args.command
-			? sanitizeToolResultText(args.command).replace(/\t/g, "   ")
-			: "Receiving command…";
-	return new Text(theme.fg(TOOL_INPUT_COLOR, `$ ${command}`), 0, 0);
+function commandText(args: any): string {
+	return typeof args?.command === "string" && args.command
+		? `$ ${sanitizeToolResultText(args.command)}`
+		: "Receiving command…";
 }
 
-function commandRows(view: Text, width: number): string[] {
-	const rows = view.render(Math.max(1, width - 2));
-	return rows
-		.slice(0, 3)
-		.map((line, index) =>
-			truncateToWidth(`  ${line}${index === 2 && rows.length > 3 ? " …" : ""}`, width),
-		);
+function commandRows(command: string, theme: any, width: number): string[] {
+	const preview = boundedTextPreview(command, {
+		width: Math.max(1, width - 2),
+		maxRows: 2,
+		paint: (text) => theme.fg(TOOL_INPUT_COLOR, text),
+	});
+	return [
+		...preview.rows.map((line) => truncateToWidth(`  ${line}`, width)),
+		...(preview.omitted ? noticeRows("… More command hidden", theme, width) : []),
+	];
+}
+
+function noticeRows(notice: string, theme: any, width: number): string[] {
+	return new Text(theme.fg("dim", notice), 0, 0)
+		.render(Math.max(1, width - 2))
+		.map((line) => truncateToWidth(`  ${line}`, width));
 }
 
 export function createBashCallComponent(options: {
+	toolName?: string;
 	args: any;
 	context: any;
 	theme: any;
 	elapsed: () => string | undefined;
 	isHovered: () => boolean;
+	showInput?: boolean;
 }): Component {
 	const { theme, context } = options;
-	const command = commandView(options.args, theme);
+	const command = commandText(options.args);
 	return {
 		invalidate() {},
 		render(width) {
 			const pending = !context.result || Boolean(context.isPartial);
-			const error = Boolean(context.result?.isError || context.isError);
-			const icon = theme.fg(
-				error ? "error" : pending ? "accent" : "success",
-				error ? "✗" : pending ? "○" : "✓",
+			const code = context.result?.structuredContent?.exit_code;
+			const error = Boolean(
+				context.result?.isError ||
+					context.isError ||
+					(!pending && Number.isSafeInteger(code) && code !== 0),
 			);
-			const metadata = [bashStatusText(context.result, pending), options.elapsed()]
-				.filter(Boolean)
-				.join(" · ");
-			const header = `${icon} ${theme.fg("toolTitle", "Bash")}${metadata ? theme.fg("dim", ` · ${metadata}`) : ""}`;
-			const fullCommand = !context.result ? command.render(Math.max(1, width - 2)) : [];
+			const status = bashStatusText(context.result, pending);
+			const cancelled = status === "Cancelled";
+			const icon = theme.fg(
+				cancelled ? "dim" : error ? "error" : pending ? "accent" : "success",
+				cancelled ? "–" : error ? "✗" : pending ? "○" : "✓",
+			);
+			const metadata = [status, options.elapsed()].filter(Boolean).join(" · ");
+			const header = `${icon} ${theme.fg("toolTitle", humanizeToolLabel(options.toolName ?? "bash"))}${metadata ? theme.fg("dim", ` · ${metadata}`) : ""}`;
+			const commandPreview = boundedTextPreview(command, {
+				width: Math.max(1, width - 2),
+				maxRows: 2,
+			});
 			const expandable =
 				!context.isGrouped?.() &&
-				(Boolean(context.result) || context.expanded || fullCommand.length > 3);
+				(Boolean(context.result) || context.expanded || commandPreview.omitted);
 			const hint = expandable
 				? theme.fg(
 						options.isHovered() ? "text" : "dim",
@@ -87,11 +112,13 @@ export function createBashCallComponent(options: {
 					)
 				: "";
 			const lines = [renderToolHeaderToWidth(header, hint, width)];
-			if (!context.result) {
+			if (!context.result && options.showInput !== false) {
 				lines.push(
 					...(context.expanded
-						? fullCommand.map((line) => truncateToWidth(`  ${line}`, width))
-						: commandRows(command, width)),
+						? new Text(theme.fg(TOOL_INPUT_COLOR, command), 0, 0)
+								.render(Math.max(1, width - 2))
+								.map((line) => truncateToWidth(`  ${line}`, width))
+						: commandRows(command, theme, width)),
 				);
 			}
 			return lines;
@@ -100,37 +127,51 @@ export function createBashCallComponent(options: {
 }
 
 export function createBashResultComponent(options: {
+	toolName?: string;
 	args: any;
 	result: any;
 	theme: any;
 	isPartial: boolean;
 }): Component {
 	const { theme } = options;
-	const command = commandView(options.args, theme);
+	const command = commandText(options.args);
 	const text = bashOutputText(options.result);
-	const outputLines = text.split("\n");
-	const output = new Text(
-		theme.fg(
-			options.result?.isError ? "error" : text ? "text" : "dim",
-			outputLines.slice(-4).join("\n") ||
-				(options.isPartial ? "Waiting for output…" : "(no output)"),
-		),
-		0,
-		0,
+	const cancelled = bashStatusText(options.result, options.isPartial) === "Cancelled";
+	// Native truncation and full-output paths are source limits, not preview loss.
+	// Keep them outside the four-row sample, including on failed commands.
+	const nativeNotices: string[] = [];
+	const body = text.replace(
+		/(?:^|\n\n)(\[Showing (?:lines \d+-\d+ of \d+[^\n]*|last [^\n]+)\. Full output: [^\n]+\])(?=\n\nCommand |$)/g,
+		(_match, notice: string) => {
+			nativeNotices.push(notice);
+			return "";
+		},
 	);
+	const outputText = body || (options.isPartial ? "Waiting for output…" : "No output");
 	return {
 		invalidate() {},
 		render(width) {
 			const bodyWidth = Math.max(1, width - 2);
-			const lines = [
-				...commandRows(command, width),
-				"",
-				...output
-					.render(bodyWidth)
-					.slice(-4)
-					.map((line) => `  ${line}`),
-			];
-			return lines.map((line) => truncateToWidth(line, width));
+			const output = boundedTextPreview(outputText, {
+				width: bodyWidth,
+				maxRows: 4,
+				direction: "tail",
+				paint: (value) =>
+					theme.fg(
+						cancelled ? "dim" : options.result?.isError ? "error" : text ? "text" : "dim",
+						value,
+					),
+			});
+			const disclosure =
+				output.hiddenLines !== undefined && !text.startsWith("[large tool result replaced")
+					? `… ${output.hiddenLines} earlier ${output.hiddenLines === 1 ? "line" : "lines"} hidden`
+					: "… Earlier output hidden";
+			return [
+				...commandRows(command, theme, width),
+				...output.rows.map((line) => `  ${line}`),
+				...(output.omitted ? noticeRows(disclosure, theme, width) : []),
+				...nativeNotices.flatMap((notice) => noticeRows(notice, theme, width)),
+			].map((line) => truncateToWidth(line, width));
 		},
 	};
 }

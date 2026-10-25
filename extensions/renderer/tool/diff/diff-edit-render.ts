@@ -84,26 +84,14 @@ export function countEditDiffStats(
 	}
 }
 
-/** Keep counts in the result row: the default-mode edit title does not include them. */
+/** The title owns counts and controls; a zero-row preview still discloses hidden content. */
 function renderEditCollapsedSummaryLine(
-	stats: ParsedDiff["stats"],
+	_stats: ParsedDiff["stats"],
 	width: number,
 	theme: DiffTheme,
-	hovered: boolean,
+	_hovered: boolean,
 ): string {
-	const counts = `+${stats.added} -${stats.removed}`;
-	const hint = showMoreHintText();
-	const candidates = [
-		`↳ diff ${counts} · ${hint}`,
-		`↳ ${counts} · ${hint}`,
-		`${counts} · ${hint}`,
-		`↳ diff ${counts}`,
-		counts,
-		"diff",
-		"…",
-	];
-	const text = candidates.find((candidate) => visibleWidth(candidate) <= width) ?? "";
-	return clampDiffLineToWidth(styleDiffSummaryLine(text, stats, hint, theme, hovered), width);
+	return clampDiffLineToWidth(theme.fg("muted", "… Diff preview hidden"), width);
 }
 
 export function renderEditDiffResult(
@@ -161,14 +149,9 @@ export function renderEditDiffResult(
 
 	return {
 		[RICH_DIFF_COMPONENT]: true,
-		/** Only the current summary/remainder row is an expand target, never diff body text. */
-		isCollapsedHintLine(plainLine: string): boolean {
-			const hint = cache.getHintLine();
-			return hint !== undefined && normalizeCollapsedHintLine(plainLine) === hint;
-		},
-		/** 正文首行（diff 头行/0 行摘要行）自带 +A -D：标题不再重复计数。 */
-		bodyShowsStats(): boolean {
-			return true;
+		/** Passive disclosure only; the title owns expand/collapse. */
+		isCollapsedHintLine(_plainLine: string): boolean {
+			return false;
 		},
 		render(width: number): string[] {
 			// Live config: panel can change indicator/wrap/limits after this component is created.
@@ -257,10 +240,12 @@ export function renderEditDiffResult(
 				theme,
 				unprocessedLogicalRows,
 				hovered,
+				!wordWrap && unprocessedLogicalRows === 0,
 			);
 			const frame = renderDiffFrameLine(safeWidth, theme);
-			const renderedLines =
-				mode === "unified"
+			const renderedLines = !options.expanded
+				? bodyWithLimit.lines
+				: mode === "unified"
 					? [...headerRows.map((row) => row.text), frame, ...bodyWithLimit.lines, frame]
 					: [...headerRows.map((row) => row.text), ...bodyWithLimit.lines];
 

@@ -13,7 +13,8 @@
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { stripAnsi } from "../../utils/ansi-text.ts";
 import { oneLine } from "../../utils/format.ts";
-import { showMoreHintText } from "./names.ts";
+import { boundedTextPreview } from "./preview.ts";
+import { textFromResult } from "./result.ts";
 import { headTruncateToWidth, toolViewportWidth } from "./result.ts";
 
 export const ASK_USER_QUESTION_TOOL_NAME = "ask_user_question";
@@ -99,34 +100,40 @@ export function askUserCollapsedLines(options: {
 	isError: boolean;
 	width: number;
 	hovered?: boolean;
+	args?: any;
+	running?: boolean;
 }): string[] {
 	const { result, theme, isError } = options;
 	const fg = theme.fg.bind(theme);
 	const rowWidth = toolViewportWidth(options.width);
 	const rows = answerRows(result);
-	if (rows.length === 0) {
-		const label = result?.details?.cancelled === true ? "Declined" : "Done";
-		return [truncateToWidth(`${INDENT}${fg(isError ? "error" : "muted", label)}`, rowWidth, "")];
-	}
-	const lines = rows.map((row) => {
-		const prefix = `${INDENT}${fg("dim", "├")} `;
-		const separator = fg("dim", " -> ");
-		const fixed = visibleWidth(prefix) + visibleWidth(separator);
-		const share = Math.max(1, Math.floor((rowWidth - fixed) / 2));
-		// 问题只是标签，低一档对比度；亮色留给标题和回答。
-		const question = fg("muted", headTruncateToWidth(row.question, share));
-		const answerWidth = Math.max(1, rowWidth - fixed - visibleWidth(question));
-		const answer = fg(isError ? "error" : "success", headTruncateToWidth(row.answer, answerWidth));
-		return truncateToWidth(`${prefix}${question}${separator}${answer}`, rowWidth, "");
-	});
-	// 圆点保持 dim；hover 只高亮可点击文字。
-	const prefix = `${INDENT}${fg("dim", "└")} `;
-	const hint = ` ${fg("dim", "·")} ${fg(options.hovered ? "text" : "dim", showMoreHintText())}`;
-	const bodyWidth = Math.max(1, rowWidth - visibleWidth(prefix) - visibleWidth(hint));
-	const summary = headTruncateToWidth(`${rows.length} answered`, bodyWidth);
-	lines.push(
-		truncateToWidth(`${prefix}${fg(isError ? "error" : "muted", summary)}${hint}`, rowWidth, ""),
-	);
+	const source = rows.length
+		? rows.map((row) => `${row.question}\nSelected · ${row.answer}`).join("\n")
+		: result?.details?.cancelled === true
+			? "Cancelled"
+			: options.running
+				? (Array.isArray(options.args?.questions)
+						? options.args.questions
+								.map((item: any) => text(item?.question))
+								.filter(Boolean)
+								.join("\n")
+						: "") || "Waiting for your answer."
+				: (isError
+						? textFromResult(result, false)
+						: Array.isArray(result?.content)
+							? result.content
+									.filter((item: any) => item?.type === "text")
+									.map((item: any) => item.text ?? "")
+									.join("\n")
+							: "") || "No answer";
+	const preview = boundedTextPreview(source, { width: Math.max(1, rowWidth - 2), maxRows: 4 });
+	const lines = preview.rows.map((row) => `${INDENT}${fg(isError ? "error" : "muted", row)}`);
+	if (
+		preview.omitted ||
+		orderedAnswers(result).some((answer) => text(answer?.notes)) ||
+		text(result?.details?.globalNote)
+	)
+		lines.push(truncateToWidth(`${INDENT}${fg("dim", "… More answer details hidden")}`, rowWidth));
 	return lines;
 }
 
@@ -153,6 +160,8 @@ export function createAskUserResultComponent(options: {
 	theme: any;
 	isError: boolean;
 	isHovered?: () => boolean;
+	args?: any;
+	running?: boolean;
 }): any {
 	const { result, theme, isError } = options;
 	return {
@@ -163,11 +172,13 @@ export function createAskUserResultComponent(options: {
 				isError,
 				width,
 				hovered: options.isHovered?.() ?? false,
+				args: options.args,
+				running: options.running,
 			});
 		},
 		invalidate(): void {},
-		isCollapsedHintLine(plainLine: string): boolean {
-			return /(click to show more|to show more| · Expand)\s*$/.test(stripAnsi(plainLine));
+		isCollapsedHintLine(_plainLine: string): boolean {
+			return false;
 		},
 	};
 }

@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { stripVTControlCharacters as strip } from "node:util";
 import { ToolExecutionComponent, initTheme } from "@earendil-works/pi-coding-agent";
-
-import { config } from "../extensions/config/config.ts";
+import { visibleWidth } from "@earendil-works/pi-tui";
 import { installDefaultMode } from "../extensions/renderer/default-mode.ts";
 import { WriteExecutionMetadataStore } from "../extensions/renderer/tool/diff/index.ts";
 import {
@@ -19,453 +19,213 @@ import {
 import { toolCallSummary } from "../extensions/renderer/tool/names.ts";
 
 initTheme("dark");
-
-const theme = { fg: (_color: string, text: string) => text } as any;
-
+const theme = { fg: (_slot: string, text: string) => text } as any;
 const HEADER = "Script completed\nWall time 1.9 seconds\nOutput:\n";
-
-const call = (over: Record<string, unknown> = {}) => ({
+const call = (extra: Record<string, unknown> = {}) => ({
 	id: "c/1",
 	name: "ffgrep",
 	args: '{"pattern":"mcp","path":"src/"}',
 	status: "ok",
 	durationMs: 31,
-	...over,
+	...extra,
 });
-
-const result = (over: Record<string, unknown> = {}, calls: unknown[] = [call()]) => ({
+const result = (extra: Record<string, unknown> = {}, calls: unknown[] = [call()]) => ({
 	content: [
 		{ type: "text", text: HEADER },
 		{ type: "text", text: "--- grep ---\nnames.ts" },
 	],
 	details: { calls },
-	...over,
+	...extra,
 });
+const preview = (value: any, width = 100, running = false, code?: string) =>
+	codemodeCollapsedLines({ result: value, theme, running, isError: false, width, code }).map(strip);
+const summary = (calls: any[], running = false) =>
+	codemodeSummaryParts(calls, 0, running).join(" · ");
 
-test("输出正文：脚本头只切整块，折叠摘要不再多算 3 行", () => {
+test("Codemode output excludes only the actual separate script banner and discloses display limits", () => {
 	assert.equal(codemodeOutputText(result()), "--- grep ---\nnames.ts");
 	assert.equal(codemodeOutputLineCount(result()), 2);
-	// 头与正文同一块时不切（与 pi 原生一致，头始终是独立 content 块）
-	const glued = { content: [{ type: "text", text: `${HEADER}--- grep ---` }] };
-	assert.equal(codemodeOutputLineCount(glued), 4);
+	assert.equal(codemodeOutputLineCount({ content: [{ type: "text", text: HEADER + "body" }] }), 4);
+	const large = result({ content: [{ type: "text", text: "x".repeat(40000) }] });
+	assert.match(codemodeOutputText(large), /Display limit reached/);
+	assert.equal(codemodeOutputLineCount(large), 0, "an excerpt is not a complete result line count");
+	assert.match(preview(large).join("\n"), /More output hidden[\s\S]*Display limit reached/);
 });
 
-/** 汇总行是片段用 ` · ` 拼的，测试里拼回字符串更好读。 */
-const summaryText = (calls: any[], outputLines: number, running: boolean) =>
-	codemodeSummaryParts(calls, outputLines, running).join(" · ");
-
-test("汇总文案：运行中报进度，完成后报条数/失败数/输出行数", () => {
-	assert.equal(summaryText([], 0, false), "Done");
-	assert.equal(summaryText([call()], 0, false), "1 call");
-	assert.equal(summaryText([call(), call()], 1, false), "2 calls · 1 line output");
+test("Codemode counts done, failure, running, cancellation and unknown separately", () => {
+	assert.equal(summary([], false), "No calls");
+	assert.equal(summary([], true), "running…");
+	assert.equal(summary([call()]), "1 done");
 	assert.equal(
-		summaryText([call({ status: "error" }), call()], 2, false),
-		"2 calls · 1 failed · 2 lines output",
+		summary(
+			[
+				call(),
+				call({ status: "error" }),
+				call({ status: "running" }),
+				call({ status: "cancelled" }),
+				call({ status: undefined }),
+			],
+			true,
+		),
+		"1 done · 1 failed · 1 running · 1 cancelled · 1 unknown",
 	);
-	assert.equal(
-		summaryText([call({ status: "running" }), call({ status: "ok" })], 0, true),
-		"1 call running · 1 done",
-	);
-	assert.equal(summaryText([], 0, true), "running…");
 });
 
-test("折叠态：子调用带 detail 时接在标题后（与工具组行一致）", () => {
-	const lines = codemodeCollapsedLines({
-		result: result({}, [call({ name: "read", args: '{"path":"src/a.ts","offset":10,"limit":1}' })]),
-		theme,
-		running: false,
-		isError: false,
-		width: 100,
-	});
-	assert.equal(lines[0], " ├ ✓ Read src/a.ts (offset=10, limit=1) 31ms");
-});
-
-test("异常数据不崩：calls 非数组、元素为 null、args 非字符串", () => {
-	const messy = { content: [], details: { calls: "nope" } };
-	assert.deepEqual(codemodeCalls(messy), []);
-	assert.deepEqual(
-		codemodeCollapsedLines({ result: messy, theme, running: false, isError: false, width: 100 }),
-		[" Done · Expand"],
-	);
-
-	const withNulls = result({}, [null, { name: "read" }, call({ args: 42 })]);
-	const lines = codemodeCollapsedLines({
-		result: withNulls,
-		theme,
-		running: false,
-		isError: false,
-		width: 100,
-	});
-	// 没带 status 的调用按运行中处理（braille 帧随挂钟变，用正则）
-	assert.match(lines[0]!, /^ {1}├ \S Tool$/);
-	assert.match(lines[1]!, /^ {1}├ \S Read$/);
-	assert.match(lines[2]!, /^ {1}├ \S Ffgrep 31ms$/);
-	assert.equal(lines[3], " └ 3 calls · 2 lines output · Expand");
-});
-
-test("折叠态：子调用全用 ├，最后一行用 └ 收汇总", () => {
-	const lines = codemodeCollapsedLines({
-		result: result(),
-		theme,
-		running: false,
-		isError: false,
-		width: 100,
-	});
-	assert.deepEqual(lines, [
-		' ├ ✓ Ffgrep "mcp" in src/ 31ms',
-		" └ 1 call · 2 lines output · Expand",
+test("malformed nested data remains unknown, preserves errors, and never adds body expansion controls", () => {
+	const malformed = { content: [], details: { calls: "nope" } };
+	assert.deepEqual(codemodeCalls(malformed), []);
+	assert.deepEqual(preview(malformed), [" No output"]);
+	const value = result({}, [
+		null,
+		{ name: "read" },
+		call({ args: 42 }),
+		call({ status: "error", error: "NATIVE_FAILURE" }),
 	]);
-});
-
-test("折叠态：运行中用静态标记，汇总报 running", () => {
-	const lines = codemodeCollapsedLines({
-		result: result({}, [
-			call({ status: "running", durationMs: undefined }),
-			call({ id: "c/2", name: "fffind", args: '{"pattern":"mcp"}', status: "running" }),
-		]),
+	const rows = preview(value);
+	assert.match(rows[0]!, /○ Tool.*status unknown/);
+	assert.match(rows[1]!, /○ Read.*status unknown/);
+	assert.match(rows.join("\n"), /✗.*NATIVE_FAILURE/);
+	assert.doesNotMatch(rows.join("\n"), /Expand|Collapse/);
+	const component = createCodemodeResultComponent({
+		result: value,
 		theme,
-		running: true,
+		running: false,
 		isError: false,
-		width: 100,
 	});
-	assert.match(lines[0]!, /^ {1}├ ○ Ffgrep "mcp" in src\/$/);
-	assert.match(lines[1]!, /^ {1}├ ○ Fffind /);
-	assert.equal(lines[2], " └ 2 calls running");
+	for (const line of component.render(100))
+		assert.equal(component.isCollapsedHintLine(line), false);
 });
 
-test("折叠态：子调用过多时只列最近 8 条", () => {
-	const many = Array.from({ length: 11 }, (_, i) =>
-		call({
-			id: `c/${i + 1}`,
-			name: "read",
-			args: `{"path":"src/f${i + 1}.ts"}`,
-			status: "ok",
-			durationMs: 5 + i,
-		}),
+test("collapsed Codemode keeps six most recent actual calls, a bounded result preview and explicit omissions", () => {
+	const calls = Array.from({ length: 11 }, (_, i) =>
+		call({ name: "read", args: JSON.stringify({ path: `src/f${i + 1}.ts` }), durationMs: 5 + i }),
 	);
-	const lines = codemodeCollapsedLines({
-		result: result({}, many),
-		theme,
-		running: false,
-		isError: false,
-		width: 100,
-	});
-	assert.equal(lines[0], " ├ … 3 earlier calls");
-	assert.equal(lines.length, 10);
-	assert.match(lines[1]!, /^ {1}├ ✓ Read src\/f4\.ts 8ms$/);
-	assert.equal(lines[9], " └ 11 calls · 2 lines output · Expand");
+	const source = result({}, calls);
+	const original = structuredClone(source);
+	for (const running of [false, true]) {
+		const rows = preview(source, 100, running);
+		assert.match(rows[0]!, /5 earlier calls/);
+		assert.equal(rows.filter((row) => /├ ✓ Read/.test(row)).length, 6);
+		assert.match(rows[1]!, /f6\.ts/);
+		assert.match(rows.join("\n"), /f11\.ts[\s\S]*--- grep ---[\s\S]*names.ts/);
+		assert.doesNotMatch(rows.join("\n"), /Expand|Collapse/);
+	}
+	assert.deepEqual(source, original);
 });
 
-test("折叠态：没有子调用时补一行代码摘要，汇总用 └ 收尾", () => {
-	const lines = codemodeCollapsedLines({
-		result: result({}, []),
-		theme,
-		running: false,
-		isError: true,
-		width: 160,
-		code: "const rows = scan()\nconst hits = grep(rows)\nreturn write(hits)",
-	});
-	const plain = (line: string) => line.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "");
-	// 语句逐行用 │ 列出，3 行脚本不超过 expandedInputMaxLines（默认 5）。
-	assert.equal(plain(lines[0]!), " │ const rows = scan()");
-	assert.equal(plain(lines[1]!), " │ const hits = grep(rows)");
-	assert.equal(plain(lines[2]!), " │ return write(hits)");
-	assert.equal(lines[3], " └ 2 lines output · Expand");
-});
-
-test("折叠态：没有子调用也没有脚本时不画衔接符", () => {
-	const lines = codemodeCollapsedLines({
-		result: result({}, []),
-		theme,
-		running: false,
-		isError: true,
-		width: 100,
-	});
-	assert.deepEqual(lines, [" 2 lines output · Expand"]);
-});
-
-test("代码摘要：取信息量最大的一行语句，跳过注释与选项行", () => {
+test("script-only preview uses two statements while preserving source in expanded Input", () => {
+	const code = "const rows = scan()\nconst hits = grep(rows)\nreturn write(hits)";
+	const rows = preview(result({}, []), 160, false, code);
+	assert.match(rows[0]!, /const rows = scan\(\)/);
+	assert.match(rows[1]!, /const hits = grep\(rows\)/);
+	assert.match(rows[2]!, /1 more statement/);
+	assert.match(rows.join("\n"), /names.ts/);
 	assert.equal(
 		codemodeCodeSummary(
-			'// @options: {}\n/* block\n * comment */\nconst rows = scan()\nreturn rows.filter((row) => row.includes("a"))',
+			'// @options: {}\n/* comment */\nreturn rows.filter(row => row.includes("a"))',
 		),
-		'return rows.filter((row) => row.includes("a"))',
+		'return rows.filter(row => row.includes("a"))',
 	);
-	// 同样是调用时，带字符串的那行分更高
-	assert.equal(
-		codemodeCodeSummary('const n = count()\nconst label = name("x")'),
-		'const label = name("x")',
-	);
-	assert.equal(codemodeCodeSummary("// only a comment\n"), undefined);
+	assert.equal(codemodeCodeSummary("// only comment"), undefined);
 	assert.equal(codemodeCodeSummary(42), undefined);
+	const text = 'return rows.includes("a")';
+	assert.match(highlightCodeSummary(text), /\x1b\[/);
+	assert.equal(strip(highlightCodeSummary(text)), text);
 });
 
-test("代码摘要着色：关键字与字符串上色，剥掉 ANSI 后与原文一致", () => {
-	const summary = 'return rows.filter((row) => row.includes("a"))';
-	const colored = highlightCodeSummary(summary);
-	assert.match(colored, /\x1b\[/, "应带 ANSI 着色");
-	assert.equal(colored.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, ""), summary);
-});
-
-/** 与 pi 的 previewArgs 同口径：超 200 字符的紧凑 JSON 从尾部切掉，补 "..."。 */
-const previewArgs = (args: unknown) => {
-	const json = JSON.stringify(args) ?? "";
-	return json.length > 200 ? `${json.slice(0, 197)}...` : json;
+const previewArgs = (value: unknown) => {
+	const json = JSON.stringify(value) ?? "";
+	return json.length > 200 ? json.slice(0, 197) + "..." : json;
 };
-
-test("折叠态：截断的子调用参数仍能取到 path（issue 46 截图里的 edit 行）", () => {
-	const raw = previewArgs({
+test("truncated nested arguments retain real path/query and leave unparseable payloads visible", () => {
+	const edit = previewArgs({
 		path: "README.en.md",
-		edits: [
-			{
-				oldText: "./test.bat # or pi -e .",
-				newText:
-					"./test.sh # macOS/Linux: load the local checkout, then restore\ntest.bat  # Windows: same\n# one-off run without touching settings: pi -e .",
-			},
-		],
+		edits: [{ oldText: "old", newText: "x".repeat(300) }],
 	});
-	assert.ok(raw.length === 200 && raw.endsWith("..."), "precondition: pi 截断过");
-	assert.throws(() => JSON.parse(raw), "precondition: 截断串本身解析不了");
-	const lines = codemodeCollapsedLines({
-		result: result({}, [call({ name: "edit", args: raw })]),
-		theme,
-		running: false,
-		isError: false,
-		width: 120,
-	});
-	assert.match(lines[0]!, /^ {1}├ ✓ Edit README\.en\.md 31ms$/);
-});
-
-test("折叠态：截断的检索参数恢复出 pattern，路径范围照旧", () => {
-	const raw = previewArgs({
+	assert.throws(() => JSON.parse(edit));
+	assert.match(
+		preview(result({}, [call({ name: "edit", args: edit })]))[0]!,
+		/✓ Edit README\.en\.md/,
+	);
+	const grep = previewArgs({
 		pattern: "mcp",
 		path: "src/",
 		glob: "**/*.ts",
-		extra: "x".repeat(200),
+		extra: "x".repeat(300),
 	});
-	const lines = codemodeCollapsedLines({
-		result: result({}, [call({ args: raw })]),
-		theme,
-		running: false,
-		isError: false,
-		width: 120,
-	});
-	assert.match(lines[0]!, /^ {1}├ ✓ Ffgrep "mcp" in src\/ 31ms$/);
+	assert.match(preview(result({}, [call({ args: grep })]))[0]!, /Ffgrep "mcp" in src\//);
+	assert.match(preview(result({}, [call({ args: '["mcp","src/…' })]))[0]!, /\["mcp","src\/…/);
 });
 
-test("折叠态：截断后也认不出的参数原样当载荷", () => {
-	const lines = codemodeCollapsedLines({
-		result: result({}, [call({ args: '["mcp","src/…' })]),
-		theme,
-		running: false,
-		isError: false,
-		width: 120,
-	});
-	assert.match(lines[0]!, /^ {1}├ ✓ Ffgrep \["mcp","src\/… 31ms$/);
-});
-
-test("汇总片段：宽度不够时从尾部丢，不断词", () => {
-	const lines = codemodeCollapsedLines({
-		result: result({}, [call(), call({ id: "c/2", status: "error" })]),
-		theme,
-		running: false,
-		isError: true,
-		width: 48,
-	});
-	assert.equal(lines.at(-1), " └ 2 calls · 1 failed · Expand");
-});
-
-test("展开正文：全部子调用（含错误）+ 去头输出 + 全量输出路径", () => {
-	const body = codemodeExpandedBody({
-		content: [
-			{ type: "text", text: HEADER },
-			{ type: "text", text: "--- grep ---\nnames.ts" },
-		],
-		details: {
-			calls: [
-				call(),
-				call({
-					id: "c/2",
-					name: "fffind",
-					args: '{"pattern":"mcp"}',
-					status: "error",
-					error: "boom\nbang",
-				}),
-			],
-			fullOutputPath: "C:\\tmp\\out.txt",
-		},
-	});
-	assert.equal(
-		body,
-		[
-			'ffgrep {"pattern":"mcp","path":"src/"} 31ms',
-			'fffind {"pattern":"mcp"} 31ms',
-			"    boom",
-			"    bang",
-			"",
-			"--- grep ---",
-			"names.ts",
-			"",
-			"Full output: C:\\tmp\\out.txt",
-		].join("\n"),
-	);
-});
-
-test("运行中同样只列最近 8 条", () => {
-	const many = Array.from({ length: 11 }, (_, i) =>
-		call({
-			id: `c/${i + 1}`,
-			name: "read",
-			args: `{"path":"src/f${i + 1}.ts"}`,
-			status: "running",
-			durationMs: undefined,
-		}),
-	);
-	const lines = codemodeCollapsedLines({
-		result: result({}, many),
-		theme,
-		running: true,
-		isError: false,
-		width: 100,
-	});
-	assert.equal(lines[0], " ├ … 3 earlier calls");
-	assert.equal(lines.length, 10);
-	assert.equal(lines.at(-1), " └ 11 calls running");
-});
-
-test("折叠组件：只有汇总行是展开入口，运行中不可展开", () => {
-	const running = createCodemodeResultComponent({
-		result: result(),
-		theme,
-		running: true,
-		isError: false,
-	});
-	assert.equal(running.isCollapsedHintLine(" └ 1 call · 2 lines output · Expand"), false);
-
-	const done = createCodemodeResultComponent({
-		result: result(),
-		theme,
-		running: false,
-		isError: false,
-	});
-	assert.equal(done.isCollapsedHintLine(" └ 1 call · 2 lines output · Expand"), true);
-	assert.equal(done.isCollapsedHintLine(' ├ ✓ Ffgrep "mcp" in src/ 31ms'), false);
-	assert.deepEqual(done.render(100), [
-		' ├ ✓ Ffgrep "mcp" in src/ 31ms',
-		" └ 1 call · 2 lines output · Expand",
+test("expanded Codemode preserves every call, actual errors, output and output path without duplicating errors", () => {
+	const source = result({}, [
+		call(),
+		call({ name: "fffind", args: '{"pattern":"mcp"}', status: "error", error: "boom\nbang" }),
 	]);
-});
-
-test("折叠态：hover 只高亮提示文字，圆点保持 dim（与其它折叠卡一致）", () => {
-	const tagged = { fg: (color: string, text: string) => `<${color}>${text}</${color}>` } as any;
-	// 带标签的 theme 桩里标签算可见宽度，给足宽度免得被截断
-	const base = { result: result(), theme: tagged, running: false, isError: false, width: 140 };
-	// truncateToWidth 会在行尾补 ANSI reset，断言不锚尾
-	assert.match(codemodeCollapsedLines(base).at(-1)!, /<dim>·<\/dim> <dim>Expand<\/dim>/);
+	source.details = { ...source.details, fullOutputPath: "C:\\tmp\\out.txt" } as any;
+	const body = codemodeExpandedBody(source);
 	assert.match(
-		codemodeCollapsedLines({ ...base, hovered: true }).at(-1)!,
-		/<dim>·<\/dim> <text>Expand<\/text>/,
+		body,
+		/ffgrep.*31ms[\s\S]*fffind.*31ms[\s\S]*boom\n    bang[\s\S]*--- grep ---\nnames.ts[\s\S]*Full output: C:/,
 	);
-
-	// 组件在 render() 内取 hover，跟着鼠标 motion 的 requestRender 走
-	let hovered = false;
-	const component = createCodemodeResultComponent({
-		result: result(),
-		theme: tagged,
-		running: false,
-		isError: false,
-		isHovered: () => hovered,
-	});
-	assert.match(component.render(100).at(-1)!, /<dim>·<\/dim> <dim>Expand/);
-	hovered = true;
-	assert.match(component.render(100).at(-1)!, /<dim>·<\/dim> <text>Expand/);
+	assert.equal((body.match(/boom/g) ?? []).length, 1);
 });
 
-test("折叠态：耗时/费用沿用官方格式（空格相连）", () => {
-	const withCost = codemodeCollapsedLines({
-		result: result({}, [call({ cost: 0.0031 })]),
-		theme,
-		running: false,
-		isError: false,
-		width: 100,
-	});
-	assert.equal(withCost[0], ' ├ ✓ Ffgrep "mcp" in src/ 31ms $0.0031');
-
-	const seconds = codemodeCollapsedLines({
-		result: result({}, [call({ durationMs: 1234.5 })]),
-		theme,
-		running: false,
-		isError: false,
-		width: 100,
-	});
-	assert.equal(seconds[0], ' ├ ✓ Ffgrep "mcp" in src/ 1.2s');
-});
-
-test("调用行：codemode 只报工具名，代码不进标题（其他工具不受影响）", () => {
-	// 多行、单行、空脚本都只剩标题：脚本在展开后的 Input 里看
-	const multiline =
-		'// @options: {"max_output_tokens": 1000}\nconst a = await tools.read({ path: "a.ts" })\nreturn a';
-	for (const args of [{ code: multiline }, { code: "return 1" }, { code: "// @options: {}\n" }]) {
-		assert.deepEqual(toolCallSummary("codemode", args), { main: "Codemode", detail: "" });
+test("Codemode rows retain measured durations/costs, remain width-safe and disclose cropped output", () => {
+	const source = result({ content: [{ type: "text", text: "one\ntwo\nthree\nfour\nfive\nsix" }] }, [
+		call({ durationMs: 1234.5, cost: 0.0031 }),
+	]);
+	assert.match(preview(source)[0]!, /1\.2s \$0\.0031/);
+	for (const width of [20, 40, 60, 100]) {
+		const rows = preview(source, width);
+		assert.ok(rows.every((row) => visibleWidth(row) <= Math.max(1, width)));
+		assert.match(rows.at(-1)!, /More output hidden|…/);
 	}
+});
 
-	// 同类工具不受影响：mcpscript 仍把代码当载荷，bash/read 的入参也是载荷（渲染时用 dim 接在标题后）
+test("codemode input remains a dedicated source view rather than a script pasted into the title", () => {
+	for (const args of [
+		{ code: "return 1" },
+		{ code: "const x = 1\nreturn x" },
+		{ code: "// comment" },
+	])
+		assert.deepEqual(toolCallSummary("codemode", args), { main: "Codemode", detail: "" });
 	assert.equal(toolCallSummary("mcpscript", { code: "return 1" }).payload, "return 1");
-	assert.equal(toolCallSummary("bash", { command: "ls -a" }).main, "Bash");
-	assert.equal(toolCallSummary("bash", { command: "ls -a" }).payload, "ls -a");
-	assert.equal(toolCallSummary("read", { path: "a.ts" }).main, "Read");
 	assert.equal(toolCallSummary("read", { path: "a.ts" }).path?.value, "a.ts");
 });
 
-test("Codemode 容器标题随运行、完成、失败更新，子项和树线保持一致", () => {
+test("native Codemode title is the only expansion control through streaming, completion, failure and malformed data", () => {
 	const hooks = installDefaultMode(new WriteExecutionMetadataStore());
 	try {
-		const createTool = (id: string) => new ToolExecutionComponent(
+		const tool = new ToolExecutionComponent(
 			"codemode",
-			id,
+			"cm-state",
 			{ code: "return 1" },
 			{},
 			undefined,
 			{ theme, requestRender() {}, setStatus() {} } as any,
 			process.cwd(),
 		) as any;
-		const tool = createTool("cm-align");
-		const render = (component = tool): string[] => component
-			.render(120)
-			.map((line: string) => line.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, ""))
-			.filter((line: string) => line.trim());
+		const paint = () =>
+			tool
+				.render(120)
+				.map(strip)
+				.filter((row: string) => row.trim());
 		tool.markExecutionStarted();
-		assert.match(render()[0]!, /^ ○ Codemode/);
-
-		tool.updateResult(result({}, [
-			call(),
-			call({ id: "c/2", name: "bash", status: "running", durationMs: undefined }),
-		]), true);
-		const partial = render();
-		assert.match(partial[0]!, /^ ○ Codemode/);
-		assert.ok(partial.some((line) => /^ [├└] ✓ Ffgrep/.test(line)));
-		assert.ok(partial.some((line) => /^ [├└] ○ Bash/.test(line)));
-
+		assert.match(paint()[0]!, /○ Codemode/);
+		tool.updateResult(result({}, [call(), call({ status: "running" })]), true);
+		assert.match(paint()[0]!, /○ Codemode.*1 done · 1 running.*(?:Expand|show more)/);
 		tool.updateResult(result());
-		const completed = render();
-		assert.match(completed[0]!, /^ ● Codemode/);
-		assert.ok(completed.some((line) => /^ [├└] ✓ Ffgrep/.test(line)));
-		const markerColumn = completed[0]!.indexOf("●");
-		for (const line of completed.filter((line) => /[├└]/.test(line))) {
-			assert.equal(line.search(/[├└]/), markerColumn, "子调用树线应与容器标记对齐");
-		}
-		assert.deepEqual(render(), completed, "完成后重绘不复用旧的运行中状态");
+		assert.match(paint()[0]!, /● Codemode.*1 done/);
+		assert.equal(paint().filter((row: string) => /Expand|to show more/.test(row)).length, 1);
 		tool.setExpanded(true);
-		assert.match(render()[0]!, /^ ● Codemode/);
+		assert.match(paint()[0]!, /Collapse|to collapse/);
 		tool.setExpanded(false);
-
-		const failedTool = createTool("cm-error");
-		failedTool.markExecutionStarted();
-		assert.match(render(failedTool)[0]!, /^ ○ Codemode/);
-		failedTool.updateResult(result({ isError: true }, [call({ status: "error", error: "boom" })]));
-		const failed = render(failedTool);
-		assert.match(failed[0]!, /^ ✗ Codemode/);
-		assert.ok(failed.some((line) => /^ [├└] ✗ Ffgrep/.test(line)));
+		tool.updateResult(result({}, [call({ status: "error", error: "NATIVE_FAILURE" })]));
+		assert.match(paint()[0]!, /✗ Codemode.*1 failed/);
+		assert.match(paint().join("\n"), /NATIVE_FAILURE/);
+		tool.updateResult(result({}, [null]));
+		assert.match(paint()[0]!, /unknown/);
 	} finally {
 		hooks.shutdown();
 	}

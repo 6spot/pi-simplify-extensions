@@ -8,247 +8,174 @@ import { renderToolSummary } from "../extensions/renderer/tool/names.ts";
 import { isMcpToolDefinition, mcpToolTitle } from "../extensions/renderer/tool/mcp-title.ts";
 
 initTheme("dark");
-
-// pi-mcp-adapter 的真实注册名（含自带 renderCall）。同一工具在不同 toolPrefix 下名字不同：
-// server 前缀 github_search_code / mcp 前缀 mcp__github_search_code / none 前缀 search_code，
-// 只有带 mcp 片段的名字能靠名字判定，其余靠 adapter 给的 label。
 const GATEWAY = { name: "mcp", label: "MCP", renderCall() {}, renderResult() {} };
 const SCRIPT = { name: "mcpScript", label: "MCP Script", renderCall() {}, renderResult() {} };
 const NAMESPACE = { name: "mcp__github_search_code", label: "MCP: search_code", renderCall() {} };
 const DIRECT = { name: "github_search_code", label: "MCP: search_code", renderCall() {} };
+const plain = (rows: string[]) =>
+	rows.map((row) => row.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "")).filter((row) => row.trim());
+const ui = () =>
+	({
+		theme: { fg: (_slot: string, text: string) => text },
+		setStatus() {},
+		requestRender() {},
+		getToolsExpanded: () => false,
+	}) as any;
+const make = (definition: any, id: string, args: any, context: any) =>
+	new ToolExecutionComponent(
+		definition.name,
+		id,
+		args,
+		{},
+		definition,
+		context,
+		process.cwd(),
+	) as any;
+const succeed = (tool: any, args: any, text = "1 hit") => {
+	tool.updateArgs(args);
+	tool.markExecutionStarted();
+	tool.updateResult({ content: [{ type: "text", text }], isError: false });
+	return tool;
+};
 
-const plain = (lines: string[]) =>
-	lines.map((line) => line.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "")).filter((line) => line.trim());
-
-test("判定：名字带 mcp 片段或 label 以 MCP: 开头", () => {
-	assert.equal(isMcpToolDefinition({}, "mcp"), true);
-	assert.equal(isMcpToolDefinition({}, "mcpScript"), true);
-	assert.equal(isMcpToolDefinition({}, "mcp__github_search_code"), true);
-	assert.equal(isMcpToolDefinition({}, "mcp__chrome_devtools"), true);
-	assert.equal(isMcpToolDefinition({}, "mcp:github/list"), true);
-	// 默认/none/short 前缀的直连工具名字里没有 mcp，靠 label
-	assert.equal(isMcpToolDefinition({ label: "MCP: search_code" }, "github_search_code"), true);
-	assert.equal(isMcpToolDefinition({ label: "MCP: search_code" }, "search_code"), true);
-	// 都不是就不算
+test("MCP identity comes from a real prefix/adapter label, never a description guess", () => {
+	for (const name of [
+		"mcp",
+		"mcpScript",
+		"mcp__github_search_code",
+		"mcp__chrome_devtools",
+		"mcp:github/list",
+	])
+		assert.equal(isMcpToolDefinition({}, name), true);
+	for (const name of ["github_search_code", "search_code"])
+		assert.equal(isMcpToolDefinition({ label: "MCP: search_code" }, name), true);
 	assert.equal(isMcpToolDefinition({ label: "read" }, "read"), false);
 	assert.equal(isMcpToolDefinition({ description: "Model Context Protocol" }, "remote"), false);
 });
 
-test("标题：具体工具用真实工具名，入口两个走人性化（MCP / MCP Script）", () => {
+test("MCP names retain real registration names under namespace, direct and gateway configurations", () => {
 	assert.equal(mcpToolTitle({ toolName: "mcp" }), "MCP");
-	assert.equal(mcpToolTitle({ toolName: "mcp__github_search_code" }), "mcp__github_search_code");
-	assert.equal(mcpToolTitle({ toolName: "mcp__chrome_devtools" }), "mcp__chrome_devtools");
 	assert.equal(mcpToolTitle({ toolName: "mcpScript" }), "MCP Script");
-	assert.equal(
-		mcpToolTitle({ toolName: "github_search_code", definition: DIRECT }),
-		"github_search_code",
-	);
+	assert.equal(mcpToolTitle({ toolName: NAMESPACE.name }), NAMESPACE.name);
+	assert.equal(mcpToolTitle({ toolName: DIRECT.name, definition: DIRECT }), DIRECT.name);
 	assert.equal(mcpToolTitle({ toolName: "read", definition: { label: "read" } }), undefined);
 });
 
-/** 与 generate-tool-render-examples 一致的最小 ui 桩。 */
-function stubUi() {
-	return {
-		theme: { fg: (_color: string, text: string) => text },
-		setStatus() {},
-		requestRender() {},
-		getToolsExpanded: () => false,
-	} as any;
-}
-
-async function bootExtension(ui: any) {
-	const events = new Map<string, Function>();
-	claudeCodeStyleExtension(
-		{
-			registerCommand() {},
-			registerShortcut() {},
-			registerTool() {},
-			on(name: string, handler: Function) {
-				events.set(name, handler);
-			},
-		} as any,
+test("semantic summaries retain distinct tool/input colors and bounded payloads", () => {
+	const fg = (slot: string, text: string) => `<${slot}>${text}</${slot}>`;
+	const summary = { main: "MCP call github_search_code", detail: "", payload: '{"query":"pi"}' };
+	assert.equal(
+		renderToolSummary(summary, 100, fg as any),
+		'<toolTitle>MCP call github_search_code</toolTitle><mdCode> {"query":"pi"}</mdCode>',
 	);
-	const ctx = { mode: "tui", hasUI: true, ui } as any;
+	assert.equal(
+		renderToolSummary({ ...summary, main: "MCP" }, 6, fg as any),
+		"<toolTitle>MCP</toolTitle>",
+	);
+	assert.match(
+		renderToolSummary(
+			{ main: "MCP", detail: "", payload: JSON.stringify({ query: "x".repeat(60) }) },
+			40,
+			fg as any,
+		),
+		/^<toolTitle>MCP<\/toolTitle><mdCode> \{"query":"x+…<\/mdCode>$/,
+	);
+});
+
+async function boot(context: any) {
+	const events = new Map<string, Function>();
+	claudeCodeStyleExtension({
+		registerCommand() {},
+		registerShortcut() {},
+		registerTool() {},
+		on(name: string, handler: Function) {
+			events.set(name, handler);
+		},
+	} as any);
+	const ctx = { mode: "tui", hasUI: true, ui: context } as any;
 	await events.get("session_start")?.({}, ctx);
 	return async () => {
 		await events.get("session_shutdown")?.({}, ctx);
 	};
 }
 
-function makeTool(definition: any, id: string, args: any, ui: any) {
-	return new ToolExecutionComponent(
-		definition.name,
-		id,
-		args,
-		{},
-		definition as any,
-		ui,
-		process.cwd(),
-	) as any;
-}
-
-function succeed(component: any, args: any, text = "ok") {
-	component.updateArgs(args);
-	component.markExecutionStarted();
-	component.updateResult({ content: [{ type: "text", text }], isError: false });
-	return component;
-}
-
-test("标题行：标题用 toolTitle，载荷用 mdCode，宽度不够时省掉载荷", () => {
-	const fg = (color: string, text: string) => `<${color}>${text}</${color}>`;
-	const summary = { main: "MCP call github_search_code", detail: "", payload: '{"query":"pi"}' };
-	// 样式分离
-	assert.equal(
-		renderToolSummary(summary, 100, fg as any),
-		'<toolTitle>MCP call github_search_code</toolTitle><mdCode> {"query":"pi"}</mdCode>',
-	);
-	// 放不下载荷：只留标题
-	assert.equal(
-		renderToolSummary({ ...summary, main: "MCP" }, 6, fg as any),
-		"<toolTitle>MCP</toolTitle>",
-	);
-	// 载荷自身超宽：尾部省略，仍用 mdCode
-	const wide = renderToolSummary(
-		{ main: "MCP", detail: "", payload: JSON.stringify({ query: "x".repeat(60) }) },
-		40,
-		fg as any,
-	);
-	assert.match(wide, /^<toolTitle>MCP<\/toolTitle><mdCode> \{"query":"x+…<\/mdCode>$/);
-});
-
-test("单卡：标题是真实工具名；直连走字段链，网关用 adapter 的动作风格", async () => {
-	const ui = stubUi();
-	const shutdown = await bootExtension(ui);
-	const lines = (component: any) => plain(component.render(100));
-	const main = (component: any) => lines(component)[0]!.replace(/^ \S+ /, "");
-	try {
-		const namespace = succeed(makeTool(NAMESPACE, "mcp-ns", {}, ui), { query: "pi" }, "1 hit");
-		assert.equal(main(namespace), "mcp__github_search_code pi");
-
-		// 网关：按 adapter 的 `mcp <动作> <目标>` 风格，内层入参用 dim 接在后面
-		const gateway = succeed(
-			makeTool(GATEWAY, "mcp-gw", {}, ui),
+test("native MCP cards use one title control and preserve gateway actions, safe input and actual output", async () => {
+	const context = ui();
+	const shutdown = await boot(context);
+	const cases: [any, any, RegExp, RegExp?][] = [
+		[NAMESPACE, { query: "pi" }, /MCP · mcp__github_search_code/, /pi/],
+		[DIRECT, { query: "pi" }, /MCP · github_search_code/, /pi/],
+		[
+			GATEWAY,
 			{ tool: "github_search_code", args: { query: "pi" } },
-			"1 hit",
-		);
-		assert.equal(main(gateway), 'MCP call github_search_code {"query":"pi"}');
-
-		const serverOnly = succeed(
-			makeTool(GATEWAY, "mcp-server", {}, ui),
-			{ server: "chrome-devtools" },
-			"29 tools",
-		);
-		assert.equal(main(serverOnly), "MCP list chrome-devtools");
-
-		const search = succeed(
-			makeTool(GATEWAY, "mcp-search", {}, ui),
+			/MCP/,
+			/call github_search_code.*query/,
+		],
+		[GATEWAY, { server: "chrome-devtools" }, /MCP/, /list chrome-devtools/],
+		[
+			GATEWAY,
 			{ search: "screenshot", server: "chrome-devtools", regex: true },
-			"2 tools",
-		);
-		assert.equal(main(search), "MCP search screenshot @ chrome-devtools (regex)");
-
-		const describe = succeed(
-			makeTool(GATEWAY, "mcp-describe", {}, ui),
-			{ describe: "take_screenshot" },
-			"1 tool",
-		);
-		assert.equal(main(describe), "MCP describe take_screenshot");
-
-		// 空入参：adapter 自己显示 mcp status
-		const empty = succeed(makeTool(GATEWAY, "mcp-empty", {}, ui), {}, "1 hit");
-		assert.equal(main(empty), "MCP status");
-
-		// 网关认不出的键：回退整包 JSON，不猜成 status
-		const unknown = succeed(makeTool(GATEWAY, "mcp-unknown", {}, ui), { foo: 1 }, "1 hit");
-		assert.equal(main(unknown), 'MCP {"foo":1}');
-
-		// 直连工具无入参字段：只显示名字
-		const noArgs = succeed(makeTool(NAMESPACE, "mcp-noargs", {}, ui), {}, "1 hit");
-		assert.equal(main(noArgs), "mcp__github_search_code");
-
-		// mcpScript：标题固定为 MCP Script，代码作为载荷（dim）
-		const script = succeed(
-			makeTool(SCRIPT, "mcp-script", {}, ui),
-			{ code: "emit(1)", timeoutMs: 30000 },
-			"1 line",
-		);
-		const scriptRows = lines(script);
-		assert.equal(scriptRows[0]!.replace(/^ \S+ /, ""), "MCP Script emit(1)");
-		assert.match(scriptRows[1]!, /^   ↳ 1 line returned/);
-
-		// 命名空间工具的入参是 {tool, args}，字段链认不出，回退完整 JSON
-		const namespaceCall = succeed(
-			makeTool(NAMESPACE, "mcp-ns2", {}, ui),
-			{ tool: "list_pages", args: {} },
-			"1 line",
-		);
-		assert.equal(main(namespaceCall), 'mcp__github_search_code {"tool":"list_pages","args":{}}');
-
-		// 非 MCP 工具同样受益：自定义参数键不再只剩标题
-		const custom = succeed(
-			makeTool({ name: "customTranslate", label: "Custom Translate" }, "custom-1", {}, ui),
+			/MCP/,
+			/search screenshot @ chrome-devtools \(regex\)/,
+		],
+		[GATEWAY, { describe: "take_screenshot" }, /MCP/, /describe take_screenshot/],
+		[GATEWAY, {}, /MCP/, /status/],
+		[GATEWAY, { foo: 1 }, /MCP/, /\{"foo":1\}/],
+		[NAMESPACE, {}, /MCP · mcp__github_search_code/],
+		[NAMESPACE, { tool: "list_pages", args: {} }, /MCP · mcp__github_search_code/, /list_pages/],
+		[SCRIPT, { code: "emit(1)", timeoutMs: 30000 }, /MCP Script/, /emit\(1\)/],
+		[
+			{ name: "customTranslate", label: "Custom Translate" },
 			{ text: "hi" },
-			"1 line",
-		);
-		assert.equal(main(custom), 'Custom Translate {"text":"hi"}');
-
-		// 默认前缀的直连工具：靠 label 判定，标题仍是真实名字
-		const direct = succeed(makeTool(DIRECT, "mcp-direct", {}, ui), { query: "pi" }, "1 hit");
-		assert.equal(main(direct), "github_search_code pi");
-
-		// 结果行不再有 server 标注
-		assert.match(lines(namespace)[1]!, /^   ↳ 1 line returned/);
+			/Tool · customTranslate/,
+			/hi/,
+		],
+	];
+	try {
+		for (const [index, [definition, args, identity, input]] of cases.entries()) {
+			const original = structuredClone(args);
+			const tool = succeed(make(definition, String(index), {}, context), args);
+			const rows = plain(tool.render(120));
+			const text = rows.join("\n");
+			assert.match(rows[0]!, identity);
+			if (input) assert.match(text, input);
+			assert.match(text, /1 hit/);
+			assert.doesNotMatch(text, /lines? returned/);
+			assert.ok(rows.filter((row) => /Expand|to show more/.test(row)).length <= 1);
+			if (rows.some((row) => /Expand|to show more/.test(row)))
+				assert.match(rows[0]!, /Expand|to show more/);
+			assert.deepEqual(tool.args, original);
+		}
 	} finally {
 		await shutdown();
 	}
 });
 
-test("分组：行标题与头标题都用真实工具名", () => {
-	const ui = stubUi();
+test("MCP group identity stays Multiple Tools and each child retains its actual name/action", () => {
+	const context = ui();
 	const hooks = installToolGrouping(() => true);
-	const groupRows = (container: any) =>
-		plain((container.children[0] as ToolGroupComponent).render(100));
+	const groupRows = (parent: any) => plain((parent.children[0] as ToolGroupComponent).render(100));
 	try {
-		const namespace = new Container() as any;
-		const a = makeTool(NAMESPACE, "ns-a", { query: "pi" }, ui);
-		const b = makeTool(NAMESPACE, "ns-b", { query: "pi" }, ui);
-		namespace.addChild(a);
-		namespace.addChild(b);
-		succeed(a, { query: "pi" }, "1 hit");
-		succeed(b, { query: "pi" }, "1 hit");
-		assert.match(groupRows(namespace)[0]!, /^ ● mcp__github_search_code: 2 done/);
-		assert.deepEqual(groupRows(namespace).slice(1), [
-			" ├ ✓ mcp__github_search_code pi",
-			" └ ✓ mcp__github_search_code pi",
-		]);
-
-		// 网关：行标题用 adapter 的动作风格（无内层入参时不接载荷）
-		const gateway = new Container() as any;
-		const c = makeTool(GATEWAY, "gw-a", {}, ui);
-		const d = makeTool(GATEWAY, "gw-b", {}, ui);
-		gateway.addChild(c);
-		gateway.addChild(d);
-		succeed(c, { tool: "github_search_code", args: {} }, "1 hit");
-		succeed(d, { tool: "github_search_code", args: {} }, "1 hit");
-		assert.match(groupRows(gateway)[0]!, /^ ● MCP: 2 done/);
-		assert.deepEqual(groupRows(gateway).slice(1), [
-			" ├ ✓ MCP call github_search_code",
-			" └ ✓ MCP call github_search_code",
-		]);
-
-		// 不同工具混编：头标题仍是 Multiple Tools
+		for (const [definition, args, child] of [
+			[NAMESPACE, { query: "pi" }, "MCP · mcp__github_search_code pi"],
+			[GATEWAY, { tool: "github_search_code", args: {} }, "MCP call github_search_code"],
+		] as const) {
+			const parent = new Container() as any;
+			for (const id of ["a", "b"])
+				parent.addChild(succeed(make(definition, id, {}, context), args));
+			const rows = groupRows(parent);
+			assert.match(rows[0]!, /^ ● Multiple Tools · 2 done/);
+			assert.deepEqual(rows.slice(1), [` ├ ✓ ${child}`, ` └ ✓ ${child}`]);
+		}
 		const mixed = new Container() as any;
-		const e = makeTool(GATEWAY, "mx-a", {}, ui);
-		const f = makeTool(NAMESPACE, "mx-b", {}, ui);
-		mixed.addChild(e);
-		mixed.addChild(f);
-		succeed(e, { tool: "github_search_code", args: {} }, "1 hit");
-		succeed(f, { query: "pi" }, "1 hit");
-		assert.match(groupRows(mixed)[0]!, /^ ● Multiple Tools: 2 done/);
-		assert.deepEqual(groupRows(mixed).slice(1), [
-			" ├ ✓ MCP call github_search_code",
-			" └ ✓ mcp__github_search_code pi",
-		]);
+		mixed.addChild(
+			succeed(make(GATEWAY, "x", {}, context), { tool: "github_search_code", args: {} }),
+		);
+		mixed.addChild(succeed(make(NAMESPACE, "y", {}, context), { query: "pi" }));
+		const rows = groupRows(mixed);
+		assert.match(rows[0]!, /Multiple Tools · 2 done/);
+		assert.match(rows[1]!, /MCP call github_search_code/);
+		assert.match(rows[2]!, /mcp__github_search_code pi/);
 	} finally {
 		hooks.shutdown();
 	}

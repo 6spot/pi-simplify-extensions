@@ -3,6 +3,7 @@ import test from "node:test";
 import { stripVTControlCharacters as stripAnsi } from "node:util";
 import { ToolExecutionComponent, initTheme } from "@earendil-works/pi-coding-agent";
 import { Container, visibleWidth } from "@earendil-works/pi-tui";
+import { expandedIoForTool } from "../extensions/renderer/tool/tool-io.ts";
 import { config } from "../extensions/config/config.ts";
 import {
 	installDefaultMode,
@@ -181,7 +182,7 @@ test("file panels preview arguments, stream output without accepting counts earl
 		assert.doesNotMatch(render(search), /a.ts:2: needle|1 line/);
 		assert.equal(search.render(110), search.render(110), "settled renders reuse cache");
 		search.updateResult(output("Operation aborted", { isError: true }));
-		assert.match(render(search), /✗ Grep · [^\n]*Expand/);
+		assert.match(render(search), /– Grep · cancelled · [^\n]*Expand/);
 		assert.match(render(search), /Operation aborted/);
 		assert.doesNotMatch(render(search), /No matches|✓ Grep/);
 		const read = tool("read", { path: "src/a.ts", offset: 10, limit: 2 });
@@ -222,7 +223,8 @@ test("file panels expand full available input/output, preserve controls safely, 
 		assert.match(render(incoming, 40), /○ Grep · [^\n]*Expand/);
 		assert.doesNotMatch(render(incoming, 40), /UNIQUE_QUERY_TAIL/);
 		incoming.setExpanded(true);
-		assert.ok(render(incoming, 40).replace(/\s/g, "").includes("UNIQUE_QUERY_TAIL"));
+		assert.match(render(incoming, 40), /Input · Open preview/);
+		assert.ok(expandedIoForTool(incoming)?.getInputBody().includes("UNIQUE_QUERY_TAIL"));
 		for (const name of ["grep", "find", "read"]) {
 			const args =
 				name === "read"

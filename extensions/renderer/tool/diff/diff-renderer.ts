@@ -23,5 +23,4 @@ export { countEditDiffStats, renderEditDiffResult } from "./diff-edit-render.ts"
 export {
 	countWriteDiffStats,
 	renderWriteDiffResult,
-	writeStatsInCollapsedBody,
 } from "./diff-write-render.ts";

@@ -5,7 +5,7 @@ import { Type } from "typebox";
 import { TaskManager, type TaskEvent, type TaskSnapshot } from "./tasks.ts";
 import { renderTaskNotices } from "./notices.ts";
 
-import { createTaskView } from "./view.ts";
+import { createTaskView, createTaskFallbackView, isTaskCardSnapshot } from "./view.ts";
 export { taskSummary } from "./view.ts";
 
 /** No message handler relays parent responses back into children: only explicit child events wake the parent. */
@@ -179,27 +179,25 @@ export function registerTaskManager(
 			timeoutMs: Type.Optional(Type.Integer({ minimum: 1, maximum: 30000 })),
 		}),
 		renderCall(args, theme, context) {
-			if ((context as any)?.result?.details?.tasks?.length)
-				return { render: () => [], invalidate() {} };
-			return new Text(
-				theme.fg("toolTitle", theme.bold(`subagent_task ${args.action}`)) +
-					(args.id ? theme.fg("dim", ` ${args.id.slice(0, 8)}`) : ""),
-				0,
-				0,
-			);
+			if ((context as any)?.result) return { render: () => [], invalidate() {} };
+			return createTaskFallbackView(args, { content: [] }, theme, Boolean(context?.expanded), {
+				identity: "Subagent Task",
+				isPartial: true,
+				receiving: !context?.executionStarted,
+			});
 		},
-		renderResult(result, { expanded }, theme) {
+		renderResult(result, { expanded, isPartial }, theme, context) {
 			const tasks = (result.details as { tasks?: TaskSnapshot[] } | undefined)?.tasks;
-			if (!tasks?.length)
-				return new Text(
-					result.content
-						.filter((part) => part.type === "text")
-						.map((part) => part.text)
-						.join("\n"),
-					0,
-					0,
-				);
-			return createTaskView(tasks, theme, expanded, (id) => manager?.peek(id));
+			if (!Array.isArray(tasks) || !tasks.length || !tasks.every(isTaskCardSnapshot))
+				return createTaskFallbackView(context?.args, result, theme, expanded, {
+					identity: "Subagent Task",
+					isPartial,
+					isError: Boolean(context?.isError || result.isError),
+				});
+			return createTaskView(tasks, theme, expanded, (id) => manager?.peek(id), {
+				identity: "Subagent Task",
+				action: (context?.args as { action?: string } | undefined)?.action,
+			});
 		},
 		async execute(_id, params, signal, _onUpdate, ctx) {
 			try {

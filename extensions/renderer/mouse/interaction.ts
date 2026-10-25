@@ -6,14 +6,16 @@ import {
 	TOOL_GROUPING_PARENT_KEY,
 	TOOL_MOUSE_OWNER_KEY,
 } from "../../utils/patch-keys.ts";
+import { ownsPrivateToolShell } from "../tool/card-family.ts";
 import { ToolGroupComponent } from "../tool/grouping.ts";
-import { isMessageDisplayComponent } from "../tool/message-display.ts";
+import { isMessageDisplayComponent, isMessageTitleControlLine } from "../tool/message-display.ts";
 import { isLazyProxyTui } from "../../utils/fullscreen-detect.ts";
 import { setToolTuiFullscreen, isCollapseHintLine } from "../tool/names.ts";
 import {
 	type ExpandedToolIoView,
 	getActiveIoViewFrame,
 	isExpandedToolIoView,
+	expandedIoForTool,
 	type IoViewFrameState,
 	setActiveIoViewFrame,
 	type ToolIoSection,
@@ -337,8 +339,26 @@ const FULLSCREEN_VIEWPORT_PATCH = Symbol("ccstyle.fullscreen-viewport-patch");
  * diff 结果组件自带 remainder 行：声明存在时只有那一行是展开入口（正文里的同名字样不算）；
  * 未声明的组件继续用文本规则。
  */
+function privateToolShell(component: any): boolean {
+	return ownsPrivateToolShell(
+		String(component?.toolName ?? ""),
+		component?.toolDefinition ?? component?.builtInToolDefinition,
+	);
+}
+
 function isCollapsedHintRow(component: any, finalLine: string, localRow?: number): boolean {
+	const call = component?.callRendererComponent;
+	if (call?.hasTitleControl?.()) return call.isTitleControlLine(finalLine);
+	if (
+		typeof call?.isCollapsedHintLine === "function" &&
+		call.isCollapsedHintLine(finalLine, localRow)
+	)
+		return true;
+	const messageTitle = isMessageTitleControlLine(component, finalLine);
+	if (messageTitle !== undefined) return messageTitle;
 	const result = component?.resultRendererComponent ?? component;
+	if (typeof component?.isTitleControlLine === "function")
+		return component.isTitleControlLine(finalLine);
 	if (typeof result?.isCollapsedHintLine === "function")
 		return result.isCollapsedHintLine(finalLine, localRow);
 	return /(?:\((?:[^()\n]* \/ (?:click|to expand)|[^()\n]*, (?:[\w/+]+\s+)?to (?:expand|show more))\)|click to show more|to show more| · Expand)\s*$/.test(
@@ -352,7 +372,15 @@ function isCollapsedHintRow(component: any, finalLine: string, localRow?: number
  * remainder 行且没有原生展开提示时，继续走官方整行行为。
  */
 function blocksOfficialCardToggle(component: any, event: any): boolean {
-	if (event?.type !== "click" || event.button !== "left" || component?.expanded) return false;
+	if (event?.type !== "click" || event.button !== "left") return false;
+	const titleOwned =
+		component?.callRendererComponent?.hasTitleControl?.() === true ||
+		(["subagent", "subagent_task"].includes(component?.toolName) &&
+			typeof component?.resultRendererComponent?.isCollapsedHintLine === "function");
+	if (component?.expanded && !titleOwned && !component?.callRendererComponent?.usesTitleControls)
+		return false;
+	if (component?.expanded && component?.callRendererComponent?.usesTitleControls && !titleOwned)
+		return true;
 	const result = component?.resultRendererComponent;
 	const lines = component.render?.(Math.max(1, Math.floor(Number(event.width) || 0)));
 	const line = Array.isArray(lines) ? lines[event.y] : undefined;
@@ -404,6 +432,7 @@ function handleFullscreenToolClick(tui: any, packet: SgrMousePacket): boolean {
 	const isGroup = component instanceof ToolGroupComponent;
 	const isThinking = component instanceof ThinkingPreviewBlock;
 	const isMessage = isMessageDisplayComponent(component);
+	if (privateToolShell(component)) return false;
 	if (!isTool && !isGroup && !isThinking && !isMessage) return false;
 	if (!component.expanded) {
 		// collapsed 仅按钮文本可展开，不能把同一行正文/留白变成点击区。
@@ -423,7 +452,7 @@ function handleFullscreenToolClick(tui: any, packet: SgrMousePacket): boolean {
 		const others: any[] = [];
 		collectFullscreenToolCards(hit.box.component, others);
 		for (const other of others) {
-			if (other !== component && other.expanded) {
+			if (other !== component && other.expanded && !privateToolShell(other)) {
 				// 展开 round 卡内 thinking/工具时，外层 compact 卡是它的容器，不能收起。
 				// 面板挂在摘要行时，anchor 与摘要行是同一张外层卡，点内部工具不能收起它。
 				// 同一回合的摘要行、anchor 和其他消息都是外层面板，收起任一个都会关掉整块。
@@ -437,7 +466,7 @@ function handleFullscreenToolClick(tui: any, packet: SgrMousePacket): boolean {
 		clearPendingCollapsePress();
 	} else {
 		// 普通工具截断头 show-more：打开全量预览（不收起）。
-		const view = isTool ? component.resultRendererComponent : null;
+		const view = isTool ? expandedIoForTool(component) : null;
 		if (isExpandedToolIoView(view)) {
 			const plain = stripTerminalSequencesPreservingLayout(line);
 			const section = view.matchShowMoreLine(plain);
@@ -454,6 +483,22 @@ function handleFullscreenToolClick(tui: any, packet: SgrMousePacket): boolean {
 					section,
 				});
 			}
+		}
+		const call = component?.callRendererComponent;
+		if (
+			call?.usesTitleControls ||
+			isGroup ||
+			(isTool && ["subagent", "subagent_task"].includes(component.toolName)) ||
+			isMessage
+		) {
+			const hint = collapsedHintHitbox(line);
+			if (
+				!hint ||
+				!isCollapsedHintRow(component, line) ||
+				packet.col < hint.startCol ||
+				packet.col > hint.endCol
+			)
+				return false;
 		}
 		// 其余放行官方：选区、OSC8 链接与官方按下登记都交给 renderer。
 		// 完整单击的收起统一在松手结算（release 被 consume，官方不会再合成 click）。
@@ -526,11 +571,11 @@ function handleFullscreenToolHover(tui: any, packet: SgrMousePacket): void {
 			} else if (component instanceof ThinkingPreviewBlock) {
 				// thinking 折叠标题行整行可点：整块 hover 都高亮动作词，不只高亮按钮文本。
 				if (component.expanded || Boolean(hintBox)) target = { kind: "thinking", component };
-			} else if (isToolExecutionComponent(component)) {
+			} else if (isToolExecutionComponent(component) && !privateToolShell(component)) {
 				let view: ExpandedToolIoView | null = null;
 				let section: ToolIoSection | null = null;
 				if (component.expanded) {
-					const resultView = component.resultRendererComponent;
+					const resultView = expandedIoForTool(component);
 					if (isExpandedToolIoView(resultView)) {
 						view = resultView;
 						const plain = stripTerminalSequencesPreservingLayout(line);
@@ -720,6 +765,7 @@ function buildInteractionFrame(
 		placementsByComponent.set(placement.component, list);
 	}
 	for (const [component, componentPlacements] of placementsByComponent) {
+		if (privateToolShell(component)) continue;
 		const rendered = renderedByComponent.get(component);
 		if (!rendered) continue;
 		for (const placement of componentPlacements) {
@@ -769,16 +815,26 @@ function buildInteractionFrame(
 			if (finalRow >= 1 && finalRow <= visibleRows) {
 				// 展开态的 ↑ Collapse 提示单独成区：hover 高亮 hint，点击仍收起整卡。
 				const hintBox = collapsedHintHitbox(placement.finalLine);
-				if (hintBox && isCollapseHintLine(stripTerminalSequences(placement.finalLine))) {
+				const ownsTitle =
+					component instanceof ToolGroupComponent ||
+					component?.callRendererComponent?.usesTitleControls ||
+					["subagent", "subagent_task"].includes(component?.toolName) ||
+					isMessageDisplayComponent(component);
+				if (
+					hintBox &&
+					isCollapseHintLine(stripTerminalSequences(placement.finalLine)) &&
+					(!ownsTitle || isCollapsedHintRow(component, placement.finalLine, placement.componentRow))
+				) {
 					regions.push({ kind: "collapse-hint", row: finalRow, ...hintBox, component });
 				}
-				regions.push({
-					kind: "expanded-card",
-					row: finalRow,
-					startCol: 1,
-					endCol: width,
-					component,
-				});
+				if (!ownsTitle)
+					regions.push({
+						kind: "expanded-card",
+						row: finalRow,
+						startCol: 1,
+						endCol: width,
+						component,
+					});
 			}
 		}
 	}
@@ -1101,6 +1157,7 @@ function installToolCardMouseGuard(): void {
 	// 每次取当前值作为下游，可能是别的扩展的包装。
 	const original = prototype.handleMouse;
 	const wrapper = function (this: any, event: any) {
+		if (privateToolShell(this)) return original.call(this, event);
 		if (event?.type === "click" && event.button === "left") {
 			// 扩展刚收起过自有卡：这次 click 属于同一次单击，吞掉避免内部工具被翻回展开。
 			if (suppressOfficialCardClickUntil && Date.now() <= suppressOfficialCardClickUntil) {
@@ -1108,13 +1165,13 @@ function installToolCardMouseGuard(): void {
 				if (this?.expanded) collapseExpandedCardFromOfficialClick(this);
 				return { handled: true };
 			}
-			// 展开卡整卡 click：接管官方 toggle，改为收起（group 内部工具行收起整个 group）。
+			if (blocksOfficialCardToggle(this, event)) return { handled: true };
+			// Only an eligible title click reaches the owned expanded-card toggle.
 			if (this?.expanded && typeof this.setExpanded === "function") {
 				collapseExpandedCardFromOfficialClick(this);
 				return { handled: true };
 			}
 		}
-		if (blocksOfficialCardToggle(this, event)) return { handled: true };
 		return original.call(this, event);
 	};
 	prototype.handleMouse = wrapper;
