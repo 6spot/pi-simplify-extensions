@@ -623,6 +623,24 @@ function hasExpandableResult(text: string): boolean {
 
 export function hasExpandableDetail(outputText: string, args: unknown): boolean {
 	if (hasExpandableResult(outputText)) return true;
+	if (args !== null && typeof args === "object" && !Array.isArray(args)) {
+		// Every ordinary field contributes a label, even when its value is empty or
+		// unserializable. Eligibility needs no sorting or nested JSON formatting.
+		const entries = Object.entries(args).filter(([, value]) => value !== undefined);
+		if (!entries.length) return false;
+		if (entries.length === 1) {
+			const [key, value] = entries[0]!;
+			if (typeof value === "string" && INPUT_CODE_LANGUAGES[sanitizeToolResultText(key)]) {
+				const code = sanitizeToolResultText(value);
+				// A standalone multiline code block omits its label. Whitespace can
+				// still acquire an ellipsis at the existing formatter's length limit.
+				if (code.includes("\n") && !code.trim())
+					return formatToolInputArgs({ [key]: value }).trim().length > 0;
+			}
+		}
+		return true;
+	}
+	// Preserve non-record formatting, including array cycles and custom toJSON.
 	return formatToolInputArgs(args).trim().length > 0;
 }
 
