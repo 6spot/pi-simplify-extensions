@@ -39,8 +39,26 @@ test("narrow footer shortens project details before usage and keeps model right-
 	assert.doesNotMatch(formatOneLineFooter(sample, 32, theme), /my-project/);
 });
 
-test("unknown context, absent Git and zero cost remain clean", () => {
-	const text = formatOneLineFooter({ model: "local", contextPercent: null, cost: 0 }, 80, theme);
-	assert.match(text, /^\s*\? \| local$/);
-	assert.equal(visibleWidth(text), 80);
+test("unknown context and absent usage default to a visible two-decimal zero cost", () => {
+	for (const cost of [undefined, 0, Number.NaN, Number.POSITIVE_INFINITY, -1]) {
+		const text = formatOneLineFooter({ model: "local", contextPercent: null, cost }, 80, theme);
+		assert.match(text, /^\s*\? \| \$0\.00 \| local$/);
+		assert.equal(visibleWidth(text), 80);
+	}
+});
+
+test("active Git operations survive identity shortening within the single-row width budget", () => {
+	const active = {
+		...sample,
+		directory: "项目目录😀-very-long-project",
+		gitOperation: "rebasing 2/5",
+	};
+	assert.match(formatOneLineFooter(active, 120, theme), /main \[rebasing 2\/5\]/);
+	const narrow = formatOneLineFooter(active, 52, theme);
+	assert.match(narrow, /\[rebasing 2\/5\]\s+42% \| \$0\.23 \| high · gpt-6$/);
+	for (let width = 0; width <= 120; width++) {
+		const text = formatOneLineFooter(active, width, theme);
+		assert.equal(visibleWidth(text), width);
+		assert.ok(!text.includes("\n"));
+	}
 });

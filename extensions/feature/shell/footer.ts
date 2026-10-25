@@ -5,6 +5,7 @@
 import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { formatTokenCount } from "../../utils/format.ts";
+import { GitOperationMonitor } from "./git-operation.ts";
 import { inputTextIndent } from "./prompt-editor.ts";
 
 const SESSION_STATS_TTL_MS = 1000;
@@ -17,9 +18,11 @@ export type FooterParts = {
 	cost?: number;
 	directory?: string;
 	branch?: string;
+	gitOperation?: string;
 };
 
 type FooterTheme = Pick<Theme, "fg">;
+type FooterLifecycle = Pick<GitOperationMonitor, "refresh" | "dispose">;
 
 /** Select the richest representation that fits; never emit a second row. */
 export function formatOneLineFooter(parts: FooterParts, width: number, theme: FooterTheme): string {
@@ -34,19 +37,28 @@ export function formatOneLineFooter(parts: FooterParts, width: number, theme: Fo
 		: `${Math.floor(parts.contextPercent)}%`;
 	const contextShort = fg("dim", percentage);
 	const contextFull = fg("dim", percentage + (parts.contextWindow ? `/${formatTokenCount(parts.contextWindow)}` : ""));
-	const cost = parts.cost && parts.cost > 0 ? fg("dim", `$${parts.cost.toFixed(2)}`) : "";
+	const totalCost = Number.isFinite(parts.cost) ? Math.max(0, parts.cost ?? 0) : 0;
+	const cost = fg("dim", `$${totalCost.toFixed(2)}`);
 	const cwd = parts.directory ? fg("dim", parts.directory) : "";
 	const branch = parts.branch ? fg("dim", parts.branch) : "";
+	const operation = parts.gitOperation ? fg("dim", `[${parts.gitOperation}]`) : "";
+	const branchState = [branch, operation].filter(Boolean).join(" ");
 	const separator = fg("muted", " | ");
 	const join = (...values: string[]) => values.filter(Boolean).join(separator);
 	const right = [thinking, model].filter(Boolean).join(fg("muted", " · "));
 	const usage = join(contextShort, cost, right);
 	// Shorten project details before dropping context, cost or Thinking Level.
 	const projectBudget = available - visibleWidth(usage) - 1;
-	const project = projectBudget >= 3
+	let project = projectBudget >= 3
 		? truncateToWidth(join(cwd, branch), projectBudget, "…") : "";
+	if (operation && projectBudget >= 3) {
+		const identityBudget = projectBudget - visibleWidth(operation) - 1;
+		project = identityBudget >= 3
+			? `${truncateToWidth(join(cwd, branch), identityBudget, "…")} ${operation}`
+			: truncateToWidth(operation, projectBudget, "…");
+	}
 	const candidates: [string, string][] = [
-		[join(cwd, branch), join(contextFull, cost, right)],
+		[join(cwd, branchState), join(contextFull, cost, right)],
 		[project, usage],
 		["", join(contextShort, right)],
 		["", right],
@@ -62,8 +74,24 @@ export function formatOneLineFooter(parts: FooterParts, width: number, theme: Fo
 }
 
 const createFooter =
-	(ctx: ExtensionContext) => (tui: any, theme: FooterTheme, footerData: any) => {
-		const unsubBranch = footerData.onBranchChange(() => tui.requestRender());
+	(ctx: ExtensionContext, monitors?: Set<FooterLifecycle>) => (tui: any, theme: FooterTheme, footerData: any) => {
+		const operations = new GitOperationMonitor(() => ctx.cwd, () => tui.requestRender());
+		const unsubBranch = footerData.onBranchChange(() => {
+			void operations.refresh();
+			tui.requestRender();
+		});
+		let disposed = false;
+		const lifecycle: FooterLifecycle = {
+			refresh: () => operations.refresh(),
+			dispose: () => {
+				if (disposed) return;
+				disposed = true;
+				operations.dispose();
+				monitors?.delete(lifecycle);
+				unsubBranch();
+			},
+		};
+		monitors?.add(lifecycle);
 
 		let statsMemo: { usage: ReturnType<typeof ctx.getContextUsage>; cost: number } | undefined;
 		let statsMemoKey = "";
@@ -119,25 +147,34 @@ const createFooter =
 					cost,
 					directory,
 					branch: footerData.getGitBranch(),
+					gitOperation: operations.label,
 				}, width - indent, theme);
 				return [" ".repeat(indent) + line];
 			},
 			invalidate(): void { tui.requestRender(); },
-			dispose(): void {
-				unsubBranch();
-			},
+			dispose: lifecycle.dispose,
 		};
 	};
 
-export function applyCustomFooter(ctx: ExtensionContext): void {
+export function applyCustomFooter(ctx: ExtensionContext, monitors?: Set<FooterLifecycle>): void {
 	if (!ctx?.hasUI || typeof ctx.ui?.setFooter !== "function") return;
 	try {
-		ctx.ui.setFooter(createFooter(ctx));
+		ctx.ui.setFooter(createFooter(ctx, monitors));
 	} catch (error) {
 		ctx.ui.notify(`footer error: ${error instanceof Error ? error.message : String(error)}`, "error");
 	}
 }
 
 export default function footerExtension(pi: ExtensionAPI): void {
-	pi.on("session_start", (_event, ctx) => applyCustomFooter(ctx));
+	const monitors = new Set<FooterLifecycle>();
+	pi.on("session_start", (_event, ctx) => applyCustomFooter(ctx, monitors));
+	const refresh = () => {
+		for (const monitor of monitors) void monitor.refresh();
+	};
+	pi.on("tool_execution_end", refresh);
+	pi.on("agent_end", refresh);
+	pi.on("session_shutdown", () => {
+		for (const monitor of monitors) monitor.dispose();
+		monitors.clear();
+	});
 }

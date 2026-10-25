@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyCustomFooter } from "../extensions/feature/shell/footer.ts";
+import footerExtension, { applyCustomFooter } from "../extensions/feature/shell/footer.ts";
+import { GitOperationMonitor } from "../extensions/feature/shell/git-operation.ts";
 
 test("Footer repaints native Git branch changes and releases its subscription", () => {
 	let factory: any;
@@ -48,4 +49,39 @@ test("Footer repaints native Git branch changes and releases its subscription", 
 		footer.dispose();
 	}
 	assert.equal(unsubscribes, 1);
+});
+
+test("tool and Agent completion refresh metadata; shutdown releases the Footer exactly once", (t) => {
+	const refresh = t.mock.method(GitOperationMonitor.prototype, "refresh", () => Promise.resolve());
+	const handlers = new Map<string, (...args: any[]) => void>();
+	let footer: any;
+	let unsubscribes = 0;
+	const ctx: any = {
+		hasUI: true,
+		cwd: "/project",
+		ui: {
+			setFooter(factory: any) {
+				footer = factory(
+					{ requestRender() {} },
+					{},
+					{
+						onBranchChange: () => () => unsubscribes++,
+					},
+				);
+			},
+			notify: assert.fail,
+		},
+	};
+	footerExtension({ on: (name: string, handler: any) => handlers.set(name, handler) } as any);
+	handlers.get("session_start")?.({}, ctx);
+	assert.equal(refresh.mock.callCount(), 1);
+	handlers.get("tool_execution_end")?.({}, ctx);
+	handlers.get("agent_end")?.({}, ctx);
+	assert.equal(refresh.mock.callCount(), 3);
+	handlers.get("session_shutdown")?.({}, ctx);
+	assert.equal(unsubscribes, 1);
+	footer.dispose();
+	handlers.get("tool_execution_end")?.({}, ctx);
+	assert.equal(unsubscribes, 1);
+	assert.equal(refresh.mock.callCount(), 3);
 });
