@@ -6,9 +6,7 @@ import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-c
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { formatTokenCount } from "../../utils/format.ts";
 import { inputTextIndent } from "./prompt-editor.ts";
-import { createGitStatsRefresher, readGitStats, type GitStats } from "./git-stats.ts";
 
-const GIT_REFRESH_MS = 10_000;
 const SESSION_STATS_TTL_MS = 1000;
 
 export type FooterParts = {
@@ -19,15 +17,9 @@ export type FooterParts = {
 	cost?: number;
 	directory?: string;
 	branch?: string;
-	git?: GitStats;
 };
 
 type FooterTheme = Pick<Theme, "fg">;
-
-function gitChanges(git: GitStats | undefined): string {
-	if (!git || (!git.add && !git.del)) return "";
-	return ` +${git.add}/-${git.del}`;
-}
 
 /** Select the richest representation that fits; never emit a second row. */
 export function formatOneLineFooter(parts: FooterParts, width: number, theme: FooterTheme): string {
@@ -45,19 +37,16 @@ export function formatOneLineFooter(parts: FooterParts, width: number, theme: Fo
 	const cost = parts.cost && parts.cost > 0 ? fg("dim", `$${parts.cost.toFixed(2)}`) : "";
 	const cwd = parts.directory ? fg("dim", parts.directory) : "";
 	const branch = parts.branch ? fg("dim", parts.branch) : "";
-	const branchFull = parts.branch
-		? branch + fg("dim", gitChanges(parts.git))
-		: "";
 	const separator = fg("muted", " | ");
 	const join = (...values: string[]) => values.filter(Boolean).join(separator);
-	const right = [thinking, model].filter(Boolean).join(" ");
+	const right = [thinking, model].filter(Boolean).join(fg("muted", " · "));
 	const usage = join(contextShort, cost, right);
 	// Shorten project details before dropping context, cost or Thinking Level.
 	const projectBudget = available - visibleWidth(usage) - 1;
 	const project = projectBudget >= 3
 		? truncateToWidth(join(cwd, branch), projectBudget, "…") : "";
 	const candidates: [string, string][] = [
-		[join(cwd, branchFull), join(contextFull, cost, right)],
+		[join(cwd, branch), join(contextFull, cost, right)],
 		[project, usage],
 		["", join(contextShort, right)],
 		["", right],
@@ -74,22 +63,7 @@ export function formatOneLineFooter(parts: FooterParts, width: number, theme: Fo
 
 const createFooter =
 	(ctx: ExtensionContext) => (tui: any, theme: FooterTheme, footerData: any) => {
-		let gitStats: GitStats | undefined;
-		let disposed = false;
-		const refresher = createGitStatsRefresher({
-			query: (signal) => readGitStats(ctx.cwd, signal),
-			onChange: (value) => {
-				gitStats = value;
-				if (!disposed) tui.requestRender();
-			},
-		});
-		refresher.refresh();
-		const timer = setInterval(() => refresher.refresh(), GIT_REFRESH_MS);
-		timer.unref?.();
-		const unsubBranch = footerData.onBranchChange(() => {
-			refresher.refresh(true);
-			tui.requestRender();
-		});
+		const unsubBranch = footerData.onBranchChange(() => tui.requestRender());
 
 		let statsMemo: { usage: ReturnType<typeof ctx.getContextUsage>; cost: number } | undefined;
 		let statsMemoKey = "";
@@ -145,15 +119,11 @@ const createFooter =
 					cost,
 					directory,
 					branch: footerData.getGitBranch(),
-					git: gitStats,
 				}, width - indent, theme);
 				return [" ".repeat(indent) + line];
 			},
 			invalidate(): void { tui.requestRender(); },
 			dispose(): void {
-				disposed = true;
-				clearInterval(timer);
-				refresher.dispose();
 				unsubBranch();
 			},
 		};

@@ -1,87 +1,51 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createGitStatsRefresher, type GitStats } from "../extensions/feature/shell/git-stats.ts";
+import { applyCustomFooter } from "../extensions/feature/shell/footer.ts";
 
-const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
-
-function pendingQuery() {
-	let resolve!: (stats: GitStats | undefined) => void;
-	const promise = new Promise<GitStats | undefined>((done) => { resolve = done; });
-	return { promise, resolve };
-}
-
-test("git refresh coalesces overlapping requests and rejects results from before a reset", async (t) => {
-	const queries: ReturnType<typeof pendingQuery>[] = [];
-	const published: (GitStats | undefined)[] = [];
-	const refresher = createGitStatsRefresher({
-		query: () => {
-			const query = pendingQuery();
-			queries.push(query);
-			return query.promise;
+test("Footer repaints native Git branch changes and releases its subscription", () => {
+	let factory: any;
+	let onBranchChange: (() => void) | undefined;
+	let branch = "main";
+	let renders = 0;
+	let unsubscribes = 0;
+	const ctx: any = {
+		hasUI: true,
+		cwd: "/project",
+		model: { id: "test" },
+		sessionManager: {
+			getSessionId: () => "session",
+			getSessionFile: () => undefined,
+			getLeafId: () => "leaf",
+			getEntries: () => [],
 		},
-		onChange: (stats) => published.push(stats),
-	});
-	t.after(() => refresher.dispose());
-	refresher.refresh();
-	queries[0].resolve({ add: 1, del: 0 });
-	await settle();
-	refresher.refresh();
-	refresher.refresh(true); // A branch/session change clears the displayed numbers immediately.
-	refresher.refresh();
-	assert.equal(queries.length, 2, "overlapping refreshes share the in-flight query");
-	assert.deepEqual(published, [{ add: 1, del: 0 }, undefined]);
-	queries[1].resolve({ add: 99, del: 99 });
-	await settle();
-	assert.equal(queries.length, 3, "only one follow-up query is queued");
-	assert.deepEqual(published, [{ add: 1, del: 0 }, undefined]);
-	queries[2].resolve({ add: 2, del: 1 });
-	await settle();
-	assert.deepEqual(published, [{ add: 1, del: 0 }, undefined, { add: 2, del: 1 }]);
-});
-
-test("disposing git refresh aborts the query and discards its result and queued refresh", async () => {
-	const query = pendingQuery();
-	let signal: AbortSignal | undefined;
-	let calls = 0;
-	const published: (GitStats | undefined)[] = [];
-	const refresher = createGitStatsRefresher({
-		query: (currentSignal) => {
-			signal = currentSignal;
-			calls++;
-			return query.promise;
+		getContextUsage: () => undefined,
+		ui: {
+			setFooter(value: any) {
+				factory = value;
+			},
+			notify: assert.fail,
 		},
-		onChange: (stats) => published.push(stats),
-	});
-	refresher.refresh();
-	refresher.refresh();
-	refresher.dispose();
-	refresher.dispose();
-	assert.equal(signal?.aborted, true);
-	query.resolve({ add: 1, del: 0 });
-	await settle();
-	refresher.refresh();
-	assert.equal(calls, 1);
-	assert.deepEqual(published, []);
-});
-
-test("git refresh suppresses duplicate updates and clears old numbers after a failed query", async (t) => {
-	let fail = false;
-	const published: (GitStats | undefined)[] = [];
-	const refresher = createGitStatsRefresher({
-		query: async () => {
-			if (fail) throw new Error("git unavailable");
-			return { add: 1, del: 0, status: "!" };
+	};
+	applyCustomFooter(ctx);
+	const footer = factory(
+		{ requestRender: () => renders++ },
+		{ fg: (_slot: string, text: string) => text },
+		{
+			getGitBranch: () => branch,
+			onBranchChange(callback: () => void) {
+				onBranchChange = callback;
+				return () => unsubscribes++;
+			},
 		},
-		onChange: (stats) => published.push(stats),
-	});
-	t.after(() => refresher.dispose());
-	refresher.refresh();
-	await settle();
-	refresher.refresh();
-	await settle();
-	assert.deepEqual(published, [{ add: 1, del: 0, status: "!" }]);
-	fail = true;
-	refresher.refresh();
-	await settle();
-	assert.deepEqual(published, [{ add: 1, del: 0, status: "!" }, undefined]);
+	);
+	try {
+		assert.match(footer.render(100)[0], /^\s*project \| main\s+/);
+		branch = "feature";
+		onBranchChange?.();
+		assert.equal(renders, 1);
+		assert.match(footer.render(100)[0], /^\s*project \| feature\s+/);
+	} finally {
+		footer.dispose();
+	}
+	assert.equal(unsubscribes, 1);
 });

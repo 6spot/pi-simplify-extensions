@@ -137,7 +137,7 @@ test("Footer immediately refreshes on session, branch leaf, model and thinking c
 		assert.equal(f.calls.entries, index + 2);
 		assert.equal(f.calls.usage, index + 2);
 	}
-	assert.match(f.render(), /high model-b$/);
+	assert.match(f.render(), /high · model-b$/);
 	assert.equal(f.state.now, 0);
 });
 
