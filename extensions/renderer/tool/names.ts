@@ -1,6 +1,7 @@
 import { posix, win32 } from "node:path";
 import type { ThemeColor } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { argumentPreview } from "../../utils/argument-preview.ts";
 import { collapseHintText } from "../../utils/expansion-hints.ts";
 export {
 	collapseHintText,
@@ -414,14 +415,10 @@ function innerArgsPayload(value: unknown): string {
 	return jsonArgs(value);
 }
 
-/** 入参序列化成单行 JSON；空对象或不可序列化时返回 ""。 */
-function jsonArgs(args: any): string {
-	try {
-		const json = JSON.stringify(args);
-		return json && json !== "{}" ? clip(json) : "";
-	} catch {
-		return "";
-	}
+/** 入参只生成有界展示摘要；空对象或不可序列化时返回 ""。 */
+function jsonArgs(args: unknown): string {
+	const json = argumentPreview(args);
+	return json && json !== "{}" ? clip(json) : "";
 }
 
 /**
