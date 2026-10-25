@@ -15,12 +15,13 @@ const sample: FooterParts = {
 	git: { add: 3, del: 1, status: "!" },
 };
 
-test("wide footer keeps project and usage on the left and model at the right edge", () => {
+test("wide footer separates project and usage with thinking and model grouped at the right edge", () => {
 	const line = formatOneLineFooter(sample, 120, theme);
-	assert.match(line, /^my-project · main \+3\/-1 · ctx 42%\/200k · \$0\.23\s+high · gpt-6$/);
+	assert.match(line, /^my-project \| main \+3\/-1\s{2,}42%\/200k \| \$0\.23 \| high gpt-6$/);
 	assert.equal(visibleWidth(line), 120);
 	assert.match(line, /gpt-6/);
-	assert.match(line, /ctx 42%/);
+	assert.match(line, /42%/);
+	assert.doesNotMatch(line, /ctx|high \|/);
 	assert.match(line, /\$0\.23/);
 	assert.match(line, /my-project/);
 	assert.match(line, /main/);
@@ -35,13 +36,13 @@ test("narrow footer shortens project details before usage and keeps model right-
 		assert.equal(line.includes("\n"), false);
 		if (width >= 5) assert.ok(line.endsWith("gpt-6"));
 	}
-	assert.match(formatOneLineFooter(sample, 20, theme), /ctx 42%\s+high · gpt-6$/);
-	assert.match(formatOneLineFooter(sample, 32, theme), /ctx 42% · \$0\.23\s+high · gpt-6$/);
+	assert.match(formatOneLineFooter(sample, 20, theme), /42% \| high gpt-6$/);
+	assert.match(formatOneLineFooter(sample, 32, theme), /42% \| \$0\.23 \| high gpt-6$/);
 	assert.doesNotMatch(formatOneLineFooter(sample, 32, theme), /my-project/);
 });
 
 test("unknown context, absent Git and zero cost remain clean", () => {
 	const text = formatOneLineFooter({ model: "local", contextPercent: null, cost: 0 }, 80, theme);
-	assert.match(text, /^ctx \?\s+local$/);
+	assert.match(text, /^\s*\? \| local$/);
 	assert.equal(visibleWidth(text), 80);
 });

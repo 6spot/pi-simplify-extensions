@@ -77,7 +77,7 @@ function fixture(t: TestContext) {
 
 test("Footer reuses expensive statistics during repaints and refreshes streaming costs at the one-second boundary", (t) => {
 	const f = fixture(t);
-	assert.match(f.render(), /ctx 10%\/100k · \$4\.25/);
+	assert.match(f.render(), /10%\/100k \| \$4\.25/);
 	for (let i = 0; i < 2000; i++) f.render(i % 2 ? 100 : 140);
 	f.footer.invalidate();
 	f.render();
@@ -88,9 +88,9 @@ test("Footer reuses expensive statistics during repaints and refreshes streaming
 		message: { role: "assistant", usage: { cost: { total: 5 } } },
 	});
 	f.state.now = 999.999;
-	assert.match(f.render(), /ctx 10%\/100k · \$4\.25/);
+	assert.match(f.render(), /10%\/100k \| \$4\.25/);
 	f.state.now = 1000;
-	assert.match(f.render(), /ctx 32%\/100k · \$9\.25/);
+	assert.match(f.render(), /32%\/100k \| \$9\.25/);
 	assert.deepEqual({ entries: f.calls.entries, usage: f.calls.usage }, { entries: 2, usage: 2 });
 	f.state.now = 1500;
 	f.render();
@@ -133,11 +133,11 @@ test("Footer immediately refreshes on session, branch leaf, model and thinking c
 		change();
 		f.state.percent++;
 		f.state.entries.push({ type: "compaction", usage: { cost: { total: 1 } } });
-		assert.ok(f.render().includes(`ctx ${f.state.percent}%`));
+		assert.ok(f.render().includes(`${f.state.percent}%`));
 		assert.equal(f.calls.entries, index + 2);
 		assert.equal(f.calls.usage, index + 2);
 	}
-	assert.match(f.render(), /high · model-b$/);
+	assert.match(f.render(), /high model-b$/);
 	assert.equal(f.state.now, 0);
 });
 
@@ -149,7 +149,7 @@ test("replacement Footer instances start with fresh statistics and keep cleanup 
 	const replacement = f.create();
 	try {
 		const output = replacement.render(140).join("\n");
-		assert.match(output, /ctx 0%\/100k/);
+		assert.match(output, /0%\/100k/);
 		assert.doesNotMatch(output, /\$4\.25/);
 		assert.equal(f.calls.entries, 2);
 		assert.equal(f.calls.usage, 2);

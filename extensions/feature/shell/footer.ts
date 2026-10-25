@@ -38,8 +38,8 @@ export function formatOneLineFooter(parts: FooterParts, width: number, theme: Fo
 	const thinking = parts.thinking && parts.thinking !== "off"
 		? fg("dim", parts.thinking) : "";
 	const percentage = parts.contextPercent == null
-		? "ctx ?"
-		: `ctx ${Math.floor(parts.contextPercent)}%`;
+		? "?"
+		: `${Math.floor(parts.contextPercent)}%`;
 	const contextShort = fg("dim", percentage);
 	const contextFull = fg("dim", percentage + (parts.contextWindow ? `/${formatTokenCount(parts.contextWindow)}` : ""));
 	const cost = parts.cost && parts.cost > 0 ? fg("dim", `$${parts.cost.toFixed(2)}`) : "";
@@ -48,21 +48,20 @@ export function formatOneLineFooter(parts: FooterParts, width: number, theme: Fo
 	const branchFull = parts.branch
 		? branch + fg("dim", gitChanges(parts.git))
 		: "";
-	const separator = fg("muted", " · ");
+	const separator = fg("muted", " | ");
 	const join = (...values: string[]) => values.filter(Boolean).join(separator);
-	const right = join(thinking, model);
-	const metrics = join(contextShort, cost);
+	const right = [thinking, model].filter(Boolean).join(" ");
+	const usage = join(contextShort, cost, right);
 	// Shorten project details before dropping context, cost or Thinking Level.
-	const projectBudget = available - visibleWidth(metrics) - visibleWidth(right)
-		- visibleWidth(separator) - 1;
+	const projectBudget = available - visibleWidth(usage) - 1;
 	const project = projectBudget >= 3
 		? truncateToWidth(join(cwd, branch), projectBudget, "…") : "";
 	const candidates: [string, string][] = [
-		[join(cwd, branchFull, contextFull, cost), right],
-		[join(project, metrics), right],
-		[contextShort, right],
+		[join(cwd, branchFull), join(contextFull, cost, right)],
+		[project, usage],
+		["", join(contextShort, right)],
 		["", right],
-		[contextShort, model],
+		["", join(contextShort, model)],
 		["", model],
 	];
 	for (const [left, end] of candidates) {
