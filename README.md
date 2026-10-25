@@ -32,7 +32,9 @@ pi install git:github.com/6spot/pi-simplify-extensions
 
 在 Pi 的 `/settings` 中切换主题 `simplify-dark` 或 `simplify-light`。两者采用暖灰配色：浅色偏纸白和浅石灰，深色偏暖炭灰；工具卡与输入框用不同深浅区分，在真彩色和 256 色终端中都保留层次。工具摘要中的命令、路径和展开后的普通输入值用偏暖的灰色，以明暗层次与输出区分，行内代码与其同色；链接和进行中标记保留柔和蓝色。成功使用绿色标记，Diff 保留低饱和的增删底色和行内强调。原生和 Compact Thinking 思考文字统一使用比正文更淡的中性灰。
 
-Update Plan、Bash、Grep、Find、Read 独立卡片默认收起时不绘制背景，运行、成功和失败均如此；展开后才显示中性或错误背景。状态标记、错误文字、内容预览及原生布局保持各自作用。
+Update Plan、Bash、Grep、Find、Read、Subagent 和 Subagent Task 独立卡片默认收起时不绘制背景，运行、成功和失败均如此；展开后才显示中性或错误背景。状态标记、错误文字、内容预览及原生布局保持各自作用。
+
+Subagent 的同步单任务、并行、链式和后台任务使用一致的紧凑卡片：标题显示角色、短任务、真实状态及可用耗时，运行中只预览一行最新进展，终态最多三行结果或错误。执行记录和用量放入展开详情，不在收起时重复派发标题或铺开最近多条执行记录。同步进程记录真实运行与结束状态，旧历史没有耗时时省略；重载或恢复会话后，已有子任务卡也会应用当前渲染。
 
 展开与收起提示按工具结构放在行内，全屏模式统一使用 `Expand` / `Collapse`：Read、Grep、Find、Bash、Update Plan、Subagent 放在标题末尾；Edit、Write Diff 保留在末尾的差异摘要之后。Read 的 `More available · offset=…` 继续单独表示下一次读取位置。Read、Grep、Find、Bash 的标题在窄屏下优先为完整操作提示留出空间，过窄时省略提示，仍可使用配置的展开快捷键。
 

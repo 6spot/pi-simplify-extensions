@@ -178,7 +178,9 @@ export function registerTaskManager(
 			),
 			timeoutMs: Type.Optional(Type.Integer({ minimum: 1, maximum: 30000 })),
 		}),
-		renderCall(args, theme) {
+		renderCall(args, theme, context) {
+			if ((context as any)?.result?.details?.tasks?.length)
+				return { render: () => [], invalidate() {} };
 			return new Text(
 				theme.fg("toolTitle", theme.bold(`subagent_task ${args.action}`)) +
 					(args.id ? theme.fg("dim", ` ${args.id.slice(0, 8)}`) : ""),

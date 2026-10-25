@@ -613,6 +613,12 @@ test("real Pi: sync single, parallel, chain, agent discovery and noninteractive 
 		});
 		assert.equal(chain.details.results.length, 2);
 		assert.match(chain.details.results[1].task, /previous=SYNC_ONE_RESULT/);
+		for (const value of [single, parallel, chain]) {
+			for (const child of value.details.results) {
+				assert.equal(child.status, "completed");
+				assert.ok(Number.isFinite(child.elapsed_ms) && child.elapsed_ms > 0);
+			}
+		}
 		const project = await f.invoke({
 			agent: "project-worker",
 			task: "SYNC_TWO",
@@ -622,6 +628,8 @@ test("real Pi: sync single, parallel, chain, agent discovery and noninteractive 
 		assert.equal(project.details.results[0].agentSource, "project");
 		const unknown = await f.invoke({ agent: "project-worker", task: "SYNC_TWO" });
 		assert.match(textOf(unknown), /Unknown agent/);
+		assert.equal(unknown.details.results[0].status, "failed");
+		assert.equal(unknown.details.results[0].elapsed_ms, undefined);
 		const invalid = await f.invoke({
 			background: true,
 			tasks: [{ agent: "worker", task: "SYNC_ONE" }],

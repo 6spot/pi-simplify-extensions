@@ -100,6 +100,13 @@ function syncToolShell(component: any, shell: "default" | "self"): void {
 	}
 }
 
+function hasSubagentRenderer(component: any): boolean {
+	return (
+		["subagent", "subagent_task"].includes(component.toolName) &&
+		typeof component.toolDefinition?.renderCall === "function"
+	);
+}
+
 function shouldGloballyStyleTool(component: any): boolean {
 	const definition = component.toolDefinition ?? component.builtInToolDefinition;
 	const toolName = String(component.toolName || definition?.name || "");
@@ -258,6 +265,7 @@ function installGlobalToolRendering(
 			return shell;
 		},
 		getCallRenderer: function (this: any, ...args: any[]) {
+			if (patch.active && hasSubagentRenderer(this)) styledDisplays.add(this);
 			if (patch.active && shouldGloballyStyleTool(this)) {
 				styledDisplays.add(this);
 				return getGloballyStyledTool(this, patch).renderCall;
@@ -289,7 +297,10 @@ function installGlobalToolRendering(
 	prototype.getRenderContext = patch.getRenderContext;
 	// fullscreen 滚动/选区每帧整树 render；内容未变时复用上一帧行，避免重做 diff/Box。
 	patch.renderPaint = function (this: any, width: number): string[] {
-		if (!patch.active || !shouldGloballyStyleTool(this)) {
+		if (!patch.active) return originalRender.call(this, width);
+		if (!shouldGloballyStyleTool(this)) {
+			// Dedicated Subagent renderers also need one adoption after reload/restore.
+			if (hasSubagentRenderer(this) && !styledDisplays.has(this)) this.updateDisplay();
 			return originalRender.call(this, width);
 		}
 		// Reload can restore history before this patch is installed. Rebuild the native
@@ -380,7 +391,10 @@ export function installToolExpandedBackground(): () => void {
 			original.call(this);
 			if (
 				!patch.active ||
-				(!this.expanded && !["update_plan", "bash", "grep", "find", "read"].includes(this.toolName))
+				(!this.expanded &&
+					!["update_plan", "bash", "grep", "find", "read", "subagent", "subagent_task"].includes(
+						this.toolName,
+					))
 			)
 				return;
 			const theme = getMessageDisplayTheme();
