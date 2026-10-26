@@ -40,7 +40,9 @@ test("Footer repaints native Git branch changes and releases its subscription", 
 		},
 	);
 	try {
-		assert.match(footer.render(100)[0], /^\s*project \| main\s+/);
+		const line = footer.render(100)[0];
+		assert.match(line, /^ {1}project \| main {2,}/, "footer indents 1 column to align with loader rows");
+		assert.equal(line.length, 100);
 		branch = "feature";
 		onBranchChange?.();
 		assert.equal(renders, 1);

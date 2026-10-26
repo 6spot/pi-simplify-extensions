@@ -7,6 +7,10 @@ import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { formatTokenCount } from "../../utils/format.ts";
 import { GitOperationMonitor } from "./git-operation.ts";
 
+/** Loader rows (Working/retry indicators) render with 1 column of left padding;
+ *  the footer aligns with them instead of touching the screen edge. */
+const FOOTER_LEFT_INSET = 1;
+
 const SESSION_STATS_TTL_MS = 1000;
 
 export type FooterParts = {
@@ -137,6 +141,7 @@ const createFooter =
 				const model = ctx.model;
 				const { usage, cost } = sessionStats();
 				const directory = ctx.cwd.split(/[\\/]/).filter(Boolean).pop() || ctx.cwd;
+				const indent = Math.min(FOOTER_LEFT_INSET, Math.max(0, width - 1));
 				const line = formatOneLineFooter({
 					model: model?.id ?? "no-model",
 					thinking: model?.reasoning ? ctx.thinkingLevel : undefined,
@@ -146,8 +151,8 @@ const createFooter =
 					directory,
 					branch: footerData.getGitBranch(),
 					gitOperation: operations.label,
-				}, width, theme);
-				return [line];
+				}, width - indent, theme);
+				return [" ".repeat(indent) + line];
 			},
 			invalidate(): void { tui.requestRender(); },
 			dispose: lifecycle.dispose,
