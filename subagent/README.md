@@ -49,7 +49,7 @@ pi --extension /absolute/path/pi-simplify-extensions/subagent/index.ts
 
 `background` 仅支持 single。并行后台任务可多次派发，每个返回独立 ID；`tasks`、`chain` 仍是原来的同步执行模式。
 
-项目 Agent 仍需指定 `agentScope: "project"` 或 `"both"`，默认仅发现用户 Agent。沿用原来的项目可信度和 `confirmProjectAgents` 确认逻辑，拒绝授权不会启动任务；未提供 UI 的运行模式仍遵循官方示例原行为。Agent frontmatter 的 `tools` 同时支持逗号字符串和 YAML 数组。模型优先使用 Agent 配置，否则继承父模型与 Thinking Level；工作目录、Agent prompt、原始任务和工具调用钩子注入的上下文继续传给子进程。
+项目 Agent 仍需指定 `agentScope: "project"` 或 `"both"`，默认仅发现用户 Agent。沿用原来的项目可信度和 `confirmProjectAgents` 确认逻辑，拒绝授权不会启动任务；未提供 UI 的运行模式仍遵循官方示例原行为。Agent frontmatter 的 `tools` 同时支持逗号字符串和 YAML 数组。模型优先使用 Agent 配置，否则继承父模型与 Thinking Level；工作目录、Agent prompt、原始任务和工具调用钩子注入的上下文继续传给子进程。Agent 写的是不带 provider 的旧模型名时，本扩展先在当前会话可用模型中解析为唯一的 `provider/model`；仍歧义、缺失或不可用时回退到父模型，并在卡片的进程输出中说明替换原因，不再让子进程直接因模型歧义退出。
 
 ## 语义报告与主模型投递
 

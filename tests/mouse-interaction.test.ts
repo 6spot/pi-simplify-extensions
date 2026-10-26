@@ -21,7 +21,7 @@ import { insetComponent } from "../extensions/renderer/tool/result.ts";
 
 initTheme("dark");
 
-test("tool groups expand and collapse only from their title controls", async () => {
+test("tool groups expand from their hint and collapse from any expanded group row", async () => {
 	const grouping = installToolGrouping(() => true);
 	grouping.setTheme({
 		fg: (color: string, text: string) => (color === "text" ? `\x1b[37m${text}\x1b[39m` : text),
@@ -108,15 +108,20 @@ test("tool groups expand and collapse only from their title controls", async () 
 		const bottomPaddingRow = tui.previousLines.length - 1;
 		assert.equal(tui.previousLines[bottomPaddingRow].trim(), "");
 		// 按下只记账，松手位置不变才算单击；拖动（松手位置不同）保持展开。
-		assert.equal(inputHandler?.(`\x1b[<0;100;${bottomPaddingRow + 1}M`)?.consume, undefined);
+		assert.equal(inputHandler?.(`\x1b[<0;100;${bottomPaddingRow + 1}M`)?.consume, true);
 		assert.equal(group.expanded, true, "press alone does not collapse");
 		inputHandler?.(`\x1b[<0;100;${bottomPaddingRow + 4}m`);
 		assert.equal(group.expanded, true, "drag release keeps the group expanded");
 		inputHandler?.(`\x1b[<0;100;${bottomPaddingRow + 1}M`);
 		inputHandler?.(`\x1b[<0;100;${bottomPaddingRow + 1}m`);
-		assert.equal(group.expanded, true, "body and padding clicks keep the group expanded");
+		assert.equal(group.expanded, false, "body click collapses the group");
+		tui.doRender();
+		inputHandler?.(`\x1b[<0;${hintColumn};${headerRow + 1}M`);
+		assert.equal(group.expanded, true, "hint press expands again");
+		inputHandler?.(`\x1b[<0;${hintColumn};${headerRow + 1}m`);
+		assert.equal(group.expanded, true, "release after expanding keeps it open");
+		tui.doRender();
 		inputHandler?.(`\x1b[<0;${collapseCol};2M`);
-		assert.equal(group.expanded, true, "title press waits for release");
 		inputHandler?.(`\x1b[<0;${collapseCol};2m`);
 		assert.equal(group.expanded, false, "title control click collapses the group");
 	} finally {
@@ -435,6 +440,68 @@ test("expanded tool group show-more opens preview instead of collapsing the grou
 	} finally {
 		installToolMouseInteraction({});
 		grouping.shutdown();
+	}
+});
+
+test("collapsed disclosure row opens the bounded preview instead of toggling the card", async () => {
+	let inputHandler: ((data: string) => { consume?: boolean } | undefined) | undefined;
+	const opened: string[] = [];
+	const theme = { fg: (_c: string, text: string) => text, bold: (text: string) => text };
+	const tool: any = {
+		toolCallId: "collapsed-preview",
+		expanded: false,
+		setExpanded(value: boolean) {
+			this.expanded = value;
+		},
+		invalidate() {},
+		args: { path: "sample.ts" },
+		result: { content: [{ type: "text", text: "full output\nline two" }], isError: false },
+		render: () => ["✓ Read sample.ts · Expand", "   ↳ first line", "   … More output hidden"],
+	};
+	const tui = {
+		terminal: { columns: 80, write() {} },
+		children: [tool],
+		previousLines: tool.render(),
+		previousViewportTop: 0,
+		requestRender() {},
+		doRender() {
+			this.previousLines = tool.render();
+		},
+	};
+	installToolMouseInteraction({
+		mode: "tui",
+		hasUI: true,
+		ui: {
+			setWidget(_key: string, factory: any) {
+				if (typeof factory === "function") factory(tui, theme);
+			},
+			onTerminalInput(handler: typeof inputHandler) {
+				inputHandler = handler;
+				return () => undefined;
+			},
+			async custom(factory: any) {
+				const host = { requestRender() {}, terminal: { rows: 40, columns: 80 } };
+				const view = factory?.(host, theme, {}, () => {});
+				if (view?.render) opened.push(view.render(80).join("\n"));
+				return undefined;
+			},
+		} as any,
+	});
+	try {
+		tui.doRender();
+		assert.equal(inputHandler?.("\x1b[<0;10;3M")?.consume, true);
+		await new Promise<void>((resolve) => process.nextTick(resolve));
+		assert.equal(
+			tool.expanded,
+			false,
+			"the disclosure opens a preview, it does not expand the card",
+		);
+		assert.ok(
+			opened.some((body) => body.includes("full output")),
+			`expected the full output in the preview, got ${JSON.stringify(opened)}`,
+		);
+	} finally {
+		installToolMouseInteraction({});
 	}
 });
 

@@ -37,6 +37,7 @@ import {
 } from "./sync-view.ts";
 import type { TaskSnapshot } from "./tasks.ts";
 import { type AgentConfig, type AgentScope, discoverAgents } from "./agents.ts";
+import { resolveAgentModelOrParent } from "./model.ts";
 
 const MAX_PARALLEL_TASKS = 8;
 const MAX_CONCURRENCY = 4;
@@ -138,6 +139,30 @@ type OnUpdateCallback = (partial: AgentToolResult<SubagentDetails>) => void;
 interface DispatchDefaults {
 	model?: string;
 	thinkingLevel?: ThinkingLevel;
+	/** Canonical provider/model references usable by this session. */
+	availableModels?: readonly { provider: string; id: string }[];
+}
+
+/**
+ * Resolve the model to pass to the child process.
+ * Ambiguous bare ids fail before spawn so the card reports a real cause.
+ */
+function childModel(
+	agent: AgentConfig,
+	dispatchDefaults: DispatchDefaults,
+): { reference?: string; error?: string; fallbackFrom?: string; inherits: boolean } {
+	const inherits = !agent.model;
+	const resolution = resolveAgentModelOrParent(
+		agent.model ?? dispatchDefaults.model,
+		dispatchDefaults.availableModels ?? [],
+		dispatchDefaults.model,
+	);
+	return {
+		reference: resolution.reference,
+		error: resolution.error,
+		fallbackFrom: resolution.fallbackFrom,
+		inherits,
+	};
 }
 
 async function runSingleAgent(
@@ -178,10 +203,32 @@ async function runSingleAgent(
 	}
 
 	const args: string[] = ["--mode", "json", "-p", "--no-session"];
-	const inheritsDispatchConfig = !agent.model;
-	const model = agent.model ?? dispatchDefaults.model;
+	const resolved = childModel(agent, dispatchDefaults);
+	if (resolved.error) {
+		return {
+			agent: agentName,
+			agentSource: agent.source,
+			task,
+			exitCode: 1,
+			status: "failed",
+			messages: [],
+			stderr: resolved.error,
+			usage: {
+				input: 0,
+				output: 0,
+				cacheRead: 0,
+				cacheWrite: 0,
+				cost: 0,
+				contextTokens: 0,
+				turns: 0,
+			},
+			model: agent.model ?? dispatchDefaults.model,
+			step,
+		};
+	}
+	const model = resolved.reference;
 	if (model) args.push("--model", model);
-	if (inheritsDispatchConfig && dispatchDefaults.thinkingLevel) {
+	if (resolved.inherits && dispatchDefaults.thinkingLevel) {
 		args.push("--thinking", dispatchDefaults.thinkingLevel);
 	}
 	if (agent.tools && agent.tools.length > 0) args.push("--tools", agent.tools.join(","));
@@ -190,6 +237,9 @@ async function runSingleAgent(
 	let tmpPromptPath: string | null = null;
 
 	const startedAt = Date.now();
+	const modelNotice = resolved.fallbackFrom
+		? `Requested model "${resolved.fallbackFrom}" is unavailable; using parent model ${model}.`
+		: undefined;
 	const currentResult: SingleResult = {
 		agent: agentName,
 		agentSource: agent.source,
@@ -197,7 +247,7 @@ async function runSingleAgent(
 		exitCode: 0,
 		status: "running",
 		messages: [],
-		stderr: "",
+		stderr: modelNotice ? `${modelNotice}\n` : "",
 		usage: {
 			input: 0,
 			output: 0,
@@ -403,9 +453,14 @@ export default function (pi: ExtensionAPI) {
 
 		async execute(_toolCallId, params, signal, onUpdate, ctx) {
 			const agentScope: AgentScope = params.agentScope ?? "user";
+			const availableModels = (ctx.modelRegistry?.getAvailable?.() ?? []).map((model: any) => ({
+				provider: String(model.provider),
+				id: String(model.id),
+			}));
 			const dispatchDefaults: DispatchDefaults = {
 				model: ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined,
 				thinkingLevel: ctx.thinkingLevel,
+				availableModels,
 			};
 			const discovery = discoverAgents(ctx.cwd, agentScope);
 			const agents = discovery.agents;
@@ -486,6 +541,8 @@ export default function (pi: ExtensionAPI) {
 					if (signal?.aborted) throw new Error("Subagent dispatch aborted");
 					const agent = agents.find((candidate) => candidate.name === params.agent);
 					if (!agent) throw new Error(`Unknown agent: ${params.agent}`);
+					const resolved = childModel(agent, dispatchDefaults);
+					if (resolved.error) throw new Error(resolved.error);
 					const snapshot = getTaskManager(ctx).start({
 						agent: agent.name,
 						task: params.task!,
@@ -493,9 +550,9 @@ export default function (pi: ExtensionAPI) {
 						async launch(id) {
 							const { command, args: prefixArgs } = getPiInvocation([]);
 							const args = [...prefixArgs, "--mode", "rpc", "--no-session"];
-							const model = agent.model ?? dispatchDefaults.model;
+							const model = resolved.reference;
 							if (model) args.push("--model", model);
-							if (!agent.model && dispatchDefaults.thinkingLevel)
+							if (resolved.inherits && dispatchDefaults.thinkingLevel)
 								args.push("--thinking", dispatchDefaults.thinkingLevel);
 							const tools = agent.tools?.length
 								? [

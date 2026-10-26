@@ -11,6 +11,8 @@ import { ToolGroupComponent } from "../tool/grouping.ts";
 import { isMessageDisplayComponent, isMessageTitleControlLine } from "../tool/message-display.ts";
 import { isLazyProxyTui } from "../../utils/fullscreen-detect.ts";
 import { setToolTuiFullscreen, isCollapseHintLine } from "../tool/names.ts";
+import { textFromResult } from "../tool/result.ts";
+import { formatToolInputArgs } from "../tool/tool-io.ts";
 import {
 	type ExpandedToolIoView,
 	getActiveIoViewFrame,
@@ -84,7 +86,13 @@ type FrameToolRender = {
 };
 
 type InteractionRegion = {
-	kind: "collapsed-hint" | "collapse-hint" | "expanded-card" | "show-more" | "scroll-bottom";
+	kind:
+		| "collapsed-hint"
+		| "collapse-hint"
+		| "expanded-card"
+		| "show-more"
+		| "preview"
+		| "scroll-bottom";
 	row: number;
 	startCol: number;
 	endCol: number;
@@ -125,6 +133,7 @@ function interactionRegionAt(packet: SgrMousePacket): InteractionRegion | null {
 	);
 	return (
 		matches.find((region) => region.kind === "show-more") ??
+		matches.find((region) => region.kind === "preview") ??
 		matches.find((region) => region.kind === "scroll-bottom") ??
 		matches.find((region) => region.kind === "collapsed-hint") ??
 		matches.find((region) => region.kind === "collapse-hint") ??
@@ -133,22 +142,54 @@ function interactionRegionAt(packet: SgrMousePacket): InteractionRegion | null {
 	);
 }
 
-function tryOpenToolIoShowMore(region: InteractionRegion): boolean {
-	const ioView = region.view;
-	const section = region.section;
-	if (!ioView || !section) return false;
+function showToolPreview(title: string, content: string): boolean {
 	const ui = toolMouseUi;
 	if (!ui || typeof ui.custom !== "function") {
 		ui?.notify?.("Full preview requires TUI custom UI", "warning");
 		return true;
 	}
-	const title = section === "input" ? "Tool Input" : "Tool Output";
-	const content = section === "input" ? ioView.getInputBody() : ioView.getOutputBody();
-	// 整段就是代码时包一层围栏：弹框按 Markdown 渲染，围栏代码块才会着色
-	const fence = section === "input" ? ioView.getInputCodeFence() : undefined;
-	const preview = fence ? `\`\`\`${fence.language}\n${fence.code}\n\`\`\`` : content;
-	void showTextPreview({ ui }, title, preview || "(empty)");
+	void showTextPreview({ ui }, title, content || "(empty)");
 	return true;
+}
+
+const PREVIEW_TEXT_LIMIT = 64 * 1024;
+
+/**
+ * Collapsed cards keep a clickable disclosure. Clicking it opens the same bounded
+ * content that the expanded card exposes, without toggling the whole card.
+ */
+function tryOpenComponentPreview(component: any): boolean {
+	const args = component?.args ?? component?.toolCall?.args;
+	const result = component?.result;
+	if (!result && args === undefined) return false;
+	const sections: string[] = [];
+	if (args !== undefined) {
+		const input = formatToolInputArgs(args).trim();
+		if (input) sections.push(`Input\n${input}`);
+	}
+	if (result) {
+		const output = textFromResult(result, true).trim();
+		if (output) sections.push(`Output\n${output}`);
+	}
+	let body = sections.join("\n\n");
+	if (body.length > PREVIEW_TEXT_LIMIT) {
+		body = `${body.slice(0, PREVIEW_TEXT_LIMIT)}\n… Preview limited to ${PREVIEW_TEXT_LIMIT} characters`;
+	}
+	if (!body.trim()) return false;
+	return showToolPreview(result ? "Tool Output" : "Tool Input", body);
+}
+
+function tryOpenToolIoShowMore(region: InteractionRegion): boolean {
+	const ioView = region.view;
+	const section = region.section;
+	if (!ioView || !section) return false;
+	const content = section === "input" ? ioView.getInputBody() : ioView.getOutputBody();
+	// Whole-code bodies are fenced so the modal's Markdown renderer highlights them.
+	const fence = section === "input" ? ioView.getInputCodeFence() : undefined;
+	return showToolPreview(
+		section === "input" ? "Tool Input" : "Tool Output",
+		fence ? `\`\`\`${fence.language}\n${fence.code}\n\`\`\`` : content,
+	);
 }
 
 function updateToolSummaryHover(tui: any, packet: SgrMousePacket): void {
@@ -157,7 +198,10 @@ function updateToolSummaryHover(tui: any, packet: SgrMousePacket): void {
 	const nextScrollButtonHovered = region?.kind === "scroll-bottom";
 	const scrollButtonChanged = setScrollButtonHovered(nextScrollButtonHovered);
 	const component = region?.component;
-	const nextToolCallId = region?.kind === "collapsed-hint" ? (component?.toolCallId ?? null) : null;
+	const nextToolCallId =
+		region?.kind === "collapsed-hint" || region?.kind === "preview"
+			? (component?.toolCallId ?? null)
+			: null;
 	// group 只在提示文字上高亮（展开卡整行都是 expanded-card，不能算 hint）。
 	const nextGroup =
 		(region?.kind === "collapsed-hint" || region?.kind === "collapse-hint") &&
@@ -263,6 +307,7 @@ function toggleToolAtMouseClick(tui: any, packet: SgrMousePacket): boolean {
 	if (region.kind === "show-more") return tryOpenToolIoShowMore(region);
 	const component = region.component;
 	if (!component) return false;
+	if (region.kind === "preview") return tryOpenComponentPreview(component);
 	if (region.kind === "expanded-card" || region.kind === "collapse-hint") {
 		// regular 模式没有官方 click 合成，按下先记账，松手结算是否收起。
 		rememberCollapsePress(component, component, packet);
@@ -346,6 +391,19 @@ function privateToolShell(component: any): boolean {
 	);
 }
 
+/** Collapsed disclosure row that stands for hidden content (not a title control). */
+function isCollapsedDisclosureRow(line: string): boolean {
+	const plain = stripTerminalSequences(line).trim();
+	// A row that also carries the card's own expand hint is a toggle, not a preview link.
+	if (collapsedHintHitbox(line)) return false;
+	return /… (?:\d+ (?:more|earlier) [^\n]*|[^\n]*hidden)(?:\s|$)/i.test(plain);
+}
+
+/** A collapsed disclosure can only open a preview when the card exposes actual content. */
+function hasPreviewableContent(component: any): boolean {
+	return Boolean(component?.result) || component?.args !== undefined;
+}
+
 function isCollapsedHintRow(component: any, finalLine: string, localRow?: number): boolean {
 	const call = component?.callRendererComponent;
 	if (call?.hasTitleControl?.()) return call.isTitleControlLine(finalLine);
@@ -373,14 +431,10 @@ function isCollapsedHintRow(component: any, finalLine: string, localRow?: number
  */
 function blocksOfficialCardToggle(component: any, event: any): boolean {
 	if (event?.type !== "click" || event.button !== "left") return false;
-	const titleOwned =
-		component?.callRendererComponent?.hasTitleControl?.() === true ||
-		(["subagent", "subagent_task"].includes(component?.toolName) &&
-			typeof component?.resultRendererComponent?.isCollapsedHintLine === "function");
-	if (component?.expanded && !titleOwned && !component?.callRendererComponent?.usesTitleControls)
-		return false;
-	if (component?.expanded && component?.callRendererComponent?.usesTitleControls && !titleOwned)
-		return true;
+	// Expanded cards with a title-owned control collapse from the body too, matching the
+	// previous behaviour; the owned control itself stays single-purpose. Expanded cards
+	// without one keep native handling.
+	if (component?.expanded) return component?.callRendererComponent?.usesTitleControls === true;
 	const result = component?.resultRendererComponent;
 	const lines = component.render?.(Math.max(1, Math.floor(Number(event.width) || 0)));
 	const line = Array.isArray(lines) ? lines[event.y] : undefined;
@@ -485,20 +539,14 @@ function handleFullscreenToolClick(tui: any, packet: SgrMousePacket): boolean {
 			}
 		}
 		const call = component?.callRendererComponent;
-		if (
-			call?.usesTitleControls ||
-			isGroup ||
-			(isTool && ["subagent", "subagent_task"].includes(component.toolName)) ||
-			isMessage
-		) {
+		if (call?.usesTitleControls) {
+			// Expanded cards keep the previous body-click collapse; a section preview control
+			// must stay single-purpose and is handled above.
 			const hint = collapsedHintHitbox(line);
-			if (
-				!hint ||
-				!isCollapsedHintRow(component, line) ||
-				packet.col < hint.startCol ||
-				packet.col > hint.endCol
-			)
+			if (!hint || packet.col < hint.startCol || packet.col > hint.endCol) {
+				rememberCollapsePress(card, pressComponent, packet);
 				return false;
+			}
 		}
 		// 其余放行官方：选区、OSC8 链接与官方按下登记都交给 renderer。
 		// 完整单击的收起统一在松手结算（release 被 consume，官方不会再合成 click）。
@@ -774,6 +822,17 @@ function buildInteractionFrame(
 			// Hit columns come from the final painted line (parent may prefix/transform).
 			const line = placement.finalLine;
 			if (!component.expanded) {
+				// Collapsed disclosure rows open the full bounded content instead of toggling
+				// the whole card; body text and the title control keep their own meanings.
+				if (isCollapsedDisclosureRow(line) && hasPreviewableContent(component)) {
+					regions.push({
+						kind: "preview",
+						row: finalRow,
+						startCol: 1,
+						endCol: width,
+						component,
+					});
+				}
 				const box = collapsedHintHitbox(line);
 				if (
 					box &&
@@ -827,14 +886,15 @@ function buildInteractionFrame(
 				) {
 					regions.push({ kind: "collapse-hint", row: finalRow, ...hintBox, component });
 				}
-				if (!ownsTitle)
-					regions.push({
-						kind: "expanded-card",
-						row: finalRow,
-						startCol: 1,
-						endCol: width,
-						component,
-					});
+				// Expanded cards collapse from any body/title row; a section preview control
+				// stays single-purpose and is matched before this region.
+				regions.push({
+					kind: "expanded-card",
+					row: finalRow,
+					startCol: 1,
+					endCol: width,
+					component,
+				});
 			}
 		}
 	}
