@@ -7,9 +7,9 @@ import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { formatTokenCount } from "../../utils/format.ts";
 import { GitOperationMonitor } from "./git-operation.ts";
 
-/** Loader rows (Working/retry indicators) render with 1 column of left padding;
- *  the footer aligns with them instead of touching the screen edge. */
-const FOOTER_LEFT_INSET = 1;
+/** Loader rows (Working/retry indicators) render with 1 column of padding on both sides;
+ *  the footer aligns with that grid instead of touching the screen edges. */
+const FOOTER_MARGIN = 1;
 
 const SESSION_STATS_TTL_MS = 1000;
 
@@ -141,7 +141,7 @@ const createFooter =
 				const model = ctx.model;
 				const { usage, cost } = sessionStats();
 				const directory = ctx.cwd.split(/[\\/]/).filter(Boolean).pop() || ctx.cwd;
-				const indent = Math.min(FOOTER_LEFT_INSET, Math.max(0, width - 1));
+				const margin = Math.min(FOOTER_MARGIN, Math.max(0, Math.floor((width - 1) / 2)));
 				const line = formatOneLineFooter({
 					model: model?.id ?? "no-model",
 					thinking: model?.reasoning ? ctx.thinkingLevel : undefined,
@@ -151,8 +151,8 @@ const createFooter =
 					directory,
 					branch: footerData.getGitBranch(),
 					gitOperation: operations.label,
-				}, width - indent, theme);
-				return [" ".repeat(indent) + line];
+				}, width - margin * 2, theme);
+				return [" ".repeat(margin) + line + " ".repeat(margin)];
 			},
 			invalidate(): void { tui.requestRender(); },
 			dispose: lifecycle.dispose,

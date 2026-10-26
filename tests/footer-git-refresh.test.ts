@@ -41,7 +41,8 @@ test("Footer repaints native Git branch changes and releases its subscription", 
 	);
 	try {
 		const line = footer.render(100)[0];
-		assert.match(line, /^ {1}project \| main {2,}/, "footer indents 1 column to align with loader rows");
+		assert.match(line, /^ {1}project \| main {2,}/, "left margin aligns with loader rows");
+		assert.match(line, / {1}$/, "right margin mirrors the left margin");
 		assert.equal(line.length, 100);
 		branch = "feature";
 		onBranchChange?.();
