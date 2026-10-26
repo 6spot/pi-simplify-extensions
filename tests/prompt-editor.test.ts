@@ -46,6 +46,8 @@ test("borderless input preserves width and text without a frame or prompt symbol
 	editor.setText("你好 hello 🙂");
 	const lines = editor.render(24).map(plain);
 	assert.equal(lines[0], " ".repeat(24));
+	// [top blank, text row, bottom blank, trailing spacer]
+	assert.equal(lines.length, 4);
 	assert.equal(lines.at(-1), " ".repeat(24));
 	assert.match(lines[1], /^ {2}你好 hello 🙂/);
 	assert.ok(lines.every((line) => visibleWidth(line) === 24));
@@ -103,12 +105,16 @@ test("input background stops before autocomplete and preserves its mouse geometr
 		},
 	});
 	const lines = editor.render(20);
-	assert.equal(lines.length, 4);
+	// [top blank, text row, bottom blank, completion, trailing spacer]
+	assert.equal(lines.length, 5);
 	assert.ok(lines.slice(0, 3).every((line) => line.includes(background)));
 	assert.equal(plain(lines[2]), " ".repeat(20));
 	assert.equal(lines[3], `  completion${" ".repeat(8)}`);
 	assert.ok(!lines[3].includes(background));
 	assert.ok(!lines[3].includes("│"));
+	// The trailing spacer keeps the footer off the input block and stays unpainted.
+	assert.equal(plain(lines[4]), " ".repeat(20));
+	assert.ok(!lines[4].includes(background));
 	assert.ok(lines.every((line) => visibleWidth(line) === 20));
 	editor.handleMouse({
 		type: "click", button: "left", x: 4, y: 3, width: 20, height: 4,

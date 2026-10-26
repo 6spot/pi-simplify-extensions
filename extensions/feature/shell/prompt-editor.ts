@@ -46,6 +46,9 @@ export class PromptEditor extends CustomEditor {
 		for (let i = 0; i < inputEnd; i++) {
 			lines[i] = this.paintBackground(lines[i]);
 		}
+		// The frameless editor has no bottom rule to separate it from the footer;
+		// keep one unpainted row of breathing room below the input block.
+		lines.push(" ".repeat(width));
 		return lines;
 	}
 }
