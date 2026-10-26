@@ -6,7 +6,6 @@ import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-c
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { formatTokenCount } from "../../utils/format.ts";
 import { GitOperationMonitor } from "./git-operation.ts";
-import { inputTextIndent } from "./prompt-editor.ts";
 
 const SESSION_STATS_TTL_MS = 1000;
 
@@ -138,7 +137,6 @@ const createFooter =
 				const model = ctx.model;
 				const { usage, cost } = sessionStats();
 				const directory = ctx.cwd.split(/[\\/]/).filter(Boolean).pop() || ctx.cwd;
-				const indent = Math.min(inputTextIndent(), Math.max(0, width - 1));
 				const line = formatOneLineFooter({
 					model: model?.id ?? "no-model",
 					thinking: model?.reasoning ? ctx.thinkingLevel : undefined,
@@ -148,8 +146,8 @@ const createFooter =
 					directory,
 					branch: footerData.getGitBranch(),
 					gitOperation: operations.label,
-				}, width - indent, theme);
-				return [" ".repeat(indent) + line];
+				}, width, theme);
+				return [line];
 			},
 			invalidate(): void { tui.requestRender(); },
 			dispose: lifecycle.dispose,

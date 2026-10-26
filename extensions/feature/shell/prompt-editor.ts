@@ -5,14 +5,10 @@
 import { CustomEditor, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 const INPUT_PADDING = 2;
-let userPaddingX = INPUT_PADDING;
-
-export function inputTextIndent(): number {
-	return userPaddingX;
-}
 
 export class PromptEditor extends CustomEditor {
 	private paintBackground: (line: string) => string = (line) => line;
+	private renderSpacer: (width: number) => string = (width) => " ".repeat(width);
 
 	constructor(...args: ConstructorParameters<typeof CustomEditor>) {
 		super(...args);
@@ -28,6 +24,12 @@ export class PromptEditor extends CustomEditor {
 		this.paintBackground = paint;
 	}
 
+	/** Row between the input block and the footer. Terminal rows are atomic, so sub-row
+	 *  spacing needs a half-block glyph: upper half in the input background, lower half default. */
+	setSpacerRenderer(render: (width: number) => string) {
+		this.renderSpacer = render;
+	}
+
 	protected override renderTopBorder(width: number): string {
 		return " ".repeat(width);
 	}
@@ -38,7 +40,6 @@ export class PromptEditor extends CustomEditor {
 
 	override render(width: number): string[] {
 		if (width <= 0) return [];
-		userPaddingX = Math.min(this.getPaddingX(), Math.max(0, Math.floor((width - 1) / 2)));
 		const lines = super.render(width);
 		// Pi appends autocomplete below the editor. Never paint over the popup.
 		const self = this as unknown as { renderedAutocompleteHeight: number };
@@ -47,8 +48,8 @@ export class PromptEditor extends CustomEditor {
 			lines[i] = this.paintBackground(lines[i]);
 		}
 		// The frameless editor has no bottom rule to separate it from the footer;
-		// keep one unpainted row of breathing room below the input block.
-		lines.push(" ".repeat(width));
+		// keep half a row of breathing room below the input block.
+		lines.push(this.renderSpacer(width));
 		return lines;
 	}
 }
@@ -65,6 +66,8 @@ export function applyPromptEditor(ctx: ExtensionContext): void {
 		ctx.ui.setEditorComponent((tui, theme, keybindings) => {
 			const editor = new PromptEditor(tui, theme, keybindings, { embedWorkingStatus: false });
 			editor.setBackgroundPainter((line) => ctx.ui.theme.bg("userMessageBg", line));
+			editor.setSpacerRenderer((width) =>
+				ctx.ui.theme.style("▀".repeat(Math.max(0, width)), { fg: ctx.ui.theme.colors.userMessageBg }));
 			return editor;
 		});
 	} catch (error) {

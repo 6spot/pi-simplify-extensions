@@ -5,7 +5,6 @@ import { CURSOR_MARKER, visibleWidth } from "@earendil-works/pi-tui";
 import {
 	applyPromptEditor,
 	clearPromptEditor,
-	inputTextIndent,
 	PromptEditor,
 } from "../extensions/feature/shell/prompt-editor.ts";
 import { stripAnsi } from "../extensions/utils/ansi-text.ts";
@@ -69,7 +68,6 @@ test("input padding stays consistent for rendering, hardware cursor, mouse click
 	editor.setText("abc");
 	let line = editor.render(20)[1];
 	assert.equal(visibleWidth(line.slice(0, line.indexOf(CURSOR_MARKER))), 5);
-	assert.equal(inputTextIndent(), 2);
 	editor.handleMouse({
 		type: "click", button: "left", x: 3, y: 1, width: 20, height: 3,
 		screenX: 3, screenY: 1, shift: false, alt: false, ctrl: false,
@@ -85,14 +83,16 @@ test("input padding stays consistent for rendering, hardware cursor, mouse click
 	editor.setText("a");
 	line = editor.render(20)[1];
 	assert.equal(visibleWidth(line.slice(0, line.indexOf(CURSOR_MARKER))), 6);
-	assert.equal(inputTextIndent(), 5);
+	assert.equal(editor.getPaddingX(), 5);
 	assert.match(plain(line), /^ {5}a/);
 });
 
 test("input background stops before autocomplete and preserves its mouse geometry", () => {
 	const editor = promptEditor();
 	const background = "\x1b[48;2;37;40;45m";
+	const spacer = "\x1b[38;2;235;235;230m▀\x1b[39m";
 	editor.setBackgroundPainter((line) => `${background}${line}\x1b[49m`);
+	editor.setSpacerRenderer((width) => `${spacer.repeat(width)}`);
 	let click: any;
 	Object.assign(editor, {
 		autocompleteState: "prefix",
@@ -105,15 +105,15 @@ test("input background stops before autocomplete and preserves its mouse geometr
 		},
 	});
 	const lines = editor.render(20);
-	// [top blank, text row, bottom blank, completion, trailing spacer]
+	// [top blank, text row, bottom blank, completion, half-row spacer]
 	assert.equal(lines.length, 5);
 	assert.ok(lines.slice(0, 3).every((line) => line.includes(background)));
 	assert.equal(plain(lines[2]), " ".repeat(20));
 	assert.equal(lines[3], `  completion${" ".repeat(8)}`);
 	assert.ok(!lines[3].includes(background));
 	assert.ok(!lines[3].includes("│"));
-	// The trailing spacer keeps the footer off the input block and stays unpainted.
-	assert.equal(plain(lines[4]), " ".repeat(20));
+	// The half-block spacer keeps the footer off the input block without a full blank row.
+	assert.ok(lines[4].includes("▀"));
 	assert.ok(!lines[4].includes(background));
 	assert.ok(lines.every((line) => visibleWidth(line) === 20));
 	editor.handleMouse({
