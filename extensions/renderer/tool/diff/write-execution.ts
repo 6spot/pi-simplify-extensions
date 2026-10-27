@@ -35,7 +35,16 @@ export class WriteExecutionMetadataStore {
 	}
 }
 
-export async function capturePreviousContent(absolutePath: string): Promise<WriteExecutionMeta> {
+export async function capturePreviousContent(
+	path: string,
+	cwd = process.cwd(),
+): Promise<WriteExecutionMeta> {
+	// Pi 未从包根公开路径解析；定位同一包内的实现，保持 ~、@ 和 Unicode 空格语义一致。
+	const { resolveToCwd } = await import(
+		new URL("./core/tools/path-utils.js", import.meta.resolve("@earendil-works/pi-coding-agent"))
+			.href
+	);
+	const absolutePath = resolveToCwd(path, cwd);
 	let info;
 	try {
 		info = await lstat(absolutePath);

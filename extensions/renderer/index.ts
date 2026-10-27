@@ -1,5 +1,4 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { isAbsolute, resolve } from "node:path";
 import { installToolGrouping, type ToolGroupingHooks } from "./tool/grouping.ts";
 import { installDefaultMode, installToolExpandedBackground, type DefaultModeHooks } from "./default-mode.ts";
 import { installMainScreenDoRenderPatch } from "../utils/fullscreen-detect.ts";
@@ -76,8 +75,7 @@ export default function claudeCodeStyle(pi: ExtensionAPI): void {
 		const args = event.args as { path?: unknown; file_path?: unknown } | undefined;
 		const path = args?.path ?? args?.file_path;
 		if (typeof path !== "string" || !path.trim()) return;
-		const absolute = isAbsolute(path) ? path : resolve(ctx.cwd, path);
-		writeMetadata.set(event.toolCallId, await capturePreviousContent(absolute));
+		writeMetadata.set(event.toolCallId, await capturePreviousContent(path, ctx.cwd));
 	});
 	pi.on("tool_execution_end", (event) => {
 		retireLiveToolCall(event.toolCallId);

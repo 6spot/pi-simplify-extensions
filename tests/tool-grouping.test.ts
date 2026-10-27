@@ -27,6 +27,41 @@ function started(name: string, id: string, args: any = {}) {
 	return component;
 }
 
+test("expanded groups preserve Kitty and iTerm2 image occupancy and following child hitboxes", () => {
+	const placements = [
+		["Read image", "\x1b_Ga=T,r=4;AAAA\x1b\\", "", "", ""],
+		["Read image", "", "", "", "\x1b[3A\x1b]1337;File=inline=1:AAAA\x07"],
+	];
+	for (const imageLines of placements) {
+		const hooks = installToolGrouping(() => true);
+		try {
+			const parent = new Container() as any;
+			const read = started("read", "image-read");
+			const bash = started("bash", "after-image");
+			read.render = () => imageLines;
+			bash.render = () => ["Bash after image"];
+			parent.addChild(read);
+			parent.addChild(bash);
+			const group = parent.children[0] as ToolGroupComponent;
+			group.setExpanded(true);
+			const lines = group.render(100);
+			const followingRow = lines.findIndex((line) => line.includes("Bash after image"));
+			assert.equal(followingRow, 2 + imageLines.length);
+			for (let row = 0; row < imageLines.length; row++) {
+				assert.equal(group.childAtRow(2 + row, 100)?.component, read);
+			}
+			assert.equal(group.childAtRow(followingRow, 100)?.component, bash);
+			// 最后一项同样保留图片完整占位，不依赖容器尾部留白凑行数。
+			bash.render = () => imageLines;
+			group.invalidate();
+			const last = group.render(100);
+			assert.equal(last.length, 2 + imageLines.length * 2 + 1);
+		} finally {
+			hooks.shutdown();
+		}
+	}
+});
+
 test("restored tools render as running with a hollow status marker", () => {
 	const hooks = installToolGrouping(() => true);
 	try {

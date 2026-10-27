@@ -4,8 +4,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { formatSkillsForPrompt, initTheme } from "@earendil-works/pi-coding-agent";
-import { rgbColor } from "@earendil-works/pi-tui";
-import {
+import { rgbColor, visibleWidth } from "@earendil-works/pi-tui";
+import contextUsageExtension, {
 	capParts,
 	collectContextBreakdown,
 	copyButtonHitbox,
@@ -429,4 +429,320 @@ test("showTextPreview scrollbar supports press and drag", async () => {
 	assert.match(dragged, /88-100 \/ 100 lines/);
 	ui.component.handleInput("\x1b");
 	await preview;
+});
+
+type ContextOverlayEntry = { component: any; done: (action?: unknown) => void };
+
+/** /context 主弹框与预览共用 harness：每次 ui.custom 同步挂载一个 overlay 并记录。 */
+function contextDialogHarness(options: { mode?: string } = {}) {
+	const fg: Array<[string, string]> = [];
+	const bg: Array<[string, string]> = [];
+	const notifications: string[] = [];
+	const overlays: ContextOverlayEntry[] = [];
+	const tui = {
+		mode: "default",
+		terminal: { columns: 80, rows: 24, write() {} },
+		requestRender() {},
+	};
+	const baseTheme: any = {
+		fg: (color: string, text: string) => {
+			fg.push([color, text]);
+			return text;
+		},
+		bg: (color: string, text: string) => {
+			bg.push([color, text]);
+			return text;
+		},
+		bold: (text: string) => text,
+		style: (text: string) => text,
+	};
+	// 新增的 theme 方法（italic/underline 等）统一退化为「原样返回最后一个字符串参数」。
+	const theme: any = new Proxy(baseTheme, {
+		get: (target, prop: string) =>
+			prop in target
+				? target[prop]
+				: (...args: any[]) => {
+						const strings = args.filter((value) => typeof value === "string");
+						return strings.at(-1) ?? "";
+					},
+	});
+	const ctx: any = {
+		mode: options.mode ?? "tui",
+		model: { contextWindow: 1_000_000 },
+		getContextUsage: () => ({ tokens: 35_500, percent: 3.5, contextWindow: 1_000_000 }),
+		getSystemPromptOptions: () => ({
+			cwd: "/repo",
+			selectedTools: ["read"],
+			toolSnippets: { read: "Read files" },
+			contextFiles: [{ path: "AGENTS.md", content: "cccc" }],
+			skills: [{ name: "ok", description: "desc", filePath: "/v" }],
+		}),
+		getSystemPrompt: () => "s".repeat(200),
+		sessionManager: {
+			buildSessionProjection: () => ({
+				entries: [
+					{
+						sourceEntry: { type: "message" },
+						messages: [
+							{ role: "system", content: "", sections: { preamble: "s".repeat(200) } },
+							{ role: "user", content: "uuuuuuuu", timestamp: 0 },
+							{
+								role: "assistant",
+								content: [
+									{ type: "text", text: "aaaa" },
+									{ type: "toolCall", id: "1", name: "read", arguments: { path: "a" } },
+								],
+							},
+							{
+								role: "toolResult",
+								toolCallId: "1",
+								toolName: "read",
+								content: "rrrrrrrr",
+								timestamp: 0,
+							},
+						],
+					},
+				],
+			}),
+		},
+		ui: {
+			custom: (factory: any) =>
+				new Promise<unknown>((resolve) => {
+					const entry: ContextOverlayEntry = { component: undefined, done: resolve };
+					entry.component = factory(tui, theme, null, resolve);
+					overlays.push(entry);
+				}),
+			notify: (message: string) => notifications.push(message),
+		},
+	};
+	const tools = [
+		{
+			name: "read",
+			description: "Read a file",
+			parameters: { type: "object" },
+			promptGuidelines: [],
+			sourceInfo: {},
+		},
+	] as any;
+	let handler: any;
+	contextUsageExtension({
+		registerCommand: (_name: string, def: any) => {
+			handler = def.handler;
+		},
+		getAllTools: () => tools,
+	} as any);
+	return {
+		overlays,
+		fg,
+		bg,
+		notifications,
+		tui,
+		running: handler("", ctx) as Promise<unknown>,
+		latest: () => overlays.at(-1)!,
+	};
+}
+
+const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+/** 主弹框固定几何：80x24 终端、框宽 64、16 行 → 屏幕起点 col=8 row=4。 */
+const DIALOG_SCREEN_COL = 8;
+const DIALOG_SCREEN_ROW = 4;
+
+function partRows(lines: string[]): string[] {
+	return lines.slice(5, 13);
+}
+
+test("context dialog renders every part row with right-aligned figures", async () => {
+	const dialog = contextDialogHarness();
+	const { component } = dialog.latest();
+	const lines = component.render(64);
+	assert.equal(lines.length, 16);
+	assert.ok(
+		lines.every((line: string) => visibleWidth(line) === 64),
+		"每行都填满框宽，不溢出也不短缺",
+	);
+	assert.match(lines[0] ?? "", /^╭─+╮$/);
+	assert.match(lines.at(-1) ?? "", /^╰─+╯$/);
+	const header = lines[1] ?? "";
+	assert.match(header, /Context Usage {2}35\.5k \/ 1000k tokens \(3\.5%\)/);
+	assert.match(header, /\[esc\]│$/);
+
+	const rows = partRows(lines);
+	for (const label of [
+		"System prompt",
+		"Memory",
+		"Skills",
+		"Tools definition",
+		"Tool results",
+		"Context",
+		"Other",
+		"Free space",
+	]) {
+		assert.ok(
+			rows.some((row) => row.includes(`■ ${label}`)),
+			`缺少 ${label} 行`,
+		);
+	}
+
+	// 数字列整体贴右：token 右端、百分比右端各占同一列，且以「% + 1 空格 + │」收尾。
+	const figures = rows.map((row) => {
+		const match = row.match(/([\d.]+k?) +([\d.]+)%/);
+		assert.ok(match, `行内没有 token/百分比：${row}`);
+		const tokenStart = row.indexOf(match[1] ?? "");
+		return {
+			tokenEnd: tokenStart + (match[1] ?? "").length,
+			percentEnd: row.indexOf(`${match[2]}%`) + (match[2] ?? "").length + 1,
+		};
+	});
+	assert.equal(new Set(figures.map((figure) => figure.tokenEnd)).size, 1, "token 列右对齐");
+	assert.equal(new Set(figures.map((figure) => figure.percentEnd)).size, 1, "百分比列右对齐");
+	for (const row of rows) assert.match(row, /\d\.\d% │$/);
+
+	dialog.latest().component.handleInput("\x1b");
+	await dialog.running;
+});
+
+test("context dialog paints usage figures and subtitle in the dim token color", async () => {
+	const dialog = contextDialogHarness();
+	dialog.latest().component.render(64);
+	const dim = dialog.fg.filter(([color]) => color === "dim").map(([, text]) => text);
+	assert.ok(dim.includes("35.5k / 1000k tokens (3.5%)"), "标题行用量走次级色");
+	assert.ok(
+		dim.some((text) => /^\s*\d+k$/.test(text)),
+		"token 数字走次级色",
+	);
+	assert.ok(!dim.some((text) => /^\s*\d+\.\d%$/.test(text)), "百分比保持正文色，不跟着变次级");
+
+	dialog.latest().component.handleInput("\x1b");
+	await dialog.running;
+});
+
+test("context dialog cycles the selection with arrow keys", async () => {
+	const dialog = contextDialogHarness();
+	const { component } = dialog.latest();
+	const selectedIndex = () =>
+		partRows(component.render(64)).findIndex((row) => row.startsWith("│›"));
+	assert.equal(selectedIndex(), 0, "默认选中第一行");
+	component.handleInput("\x1b[B");
+	assert.equal(selectedIndex(), 1);
+	component.handleInput("\x1b[A");
+	assert.equal(selectedIndex(), 0);
+	component.handleInput("\x1b[A");
+	// 选择只在有预览的 6 行（不含 Other / Free space）之间循环。
+	assert.equal(selectedIndex(), 5, "向上越界回到最后一个有预览的行");
+	component.handleInput("\x1b[B");
+	assert.equal(selectedIndex(), 0, "向下越界回到首行");
+
+	component.handleInput("\x1b");
+	await dialog.running;
+});
+
+test("context dialog hovers rows and closes from the [esc] hitbox", async () => {
+	const dialog = contextDialogHarness();
+	const { component } = dialog.latest();
+	component.render(64);
+
+	component.handleMouse({ type: "click", x: 10, y: 6 });
+	component.handleMouse({ type: "move", x: 10, y: 6, button: "none" });
+	const hovered = component.render(64);
+	assert.match(hovered[6] ?? "", /■ Memory/, "hover 命中第 6 行");
+	assert.equal(dialog.bg.at(-1)?.[0], "customMessageBg", "hover 行用次级背景");
+
+	component.handleMouse({ type: "move", x: 60, y: 1, button: "none" });
+	component.render(64);
+	assert.ok(
+		dialog.fg.some(([color, text]) => color === "text" && text === "[esc]"),
+		"hover [esc] 提亮",
+	);
+
+	component.handleMouse({ type: "press", x: 60, y: 1, button: "left" });
+	await dialog.running;
+});
+
+test("context dialog closes from a raw SGR click on [esc]", async () => {
+	const dialog = contextDialogHarness();
+	const { component } = dialog.latest();
+	component.render(64);
+	// 局部 [esc] 在 (58..62, 1)；SGR 用 1-based 屏幕坐标。
+	const col = DIALOG_SCREEN_COL + 60 + 1;
+	const row = DIALOG_SCREEN_ROW + 1 + 1;
+	component.handleInput(`\x1b[<0;${col};${row}M`);
+	await dialog.running;
+	assert.equal(dialog.overlays.length, 1, "主弹框直接关闭，不打开预览");
+});
+
+test("context dialog opens the selected preview with Enter and resumes navigation after closing it", async () => {
+	const dialog = contextDialogHarness();
+	const main = dialog.latest();
+	main.component.render(64);
+	main.component.handleInput("\r");
+	await tick();
+	assert.equal(dialog.overlays.length, 2, "Enter 打开预览");
+	assert.equal(hasActiveTextPreview(), true);
+	const preview = dialog.overlays[1]!;
+	const lines = preview.component.render(64);
+	assert.ok(
+		lines.some((line: string) => line.includes("System Prompt")),
+		"预览标题是选中行的原始内容",
+	);
+	preview.component.handleInput("\x1b");
+	await tick();
+	assert.equal(dialog.overlays.length, 3, "关掉预览后回到主弹框");
+	assert.equal(hasActiveTextPreview(), true, "返回后主弹框仍可接收鼠标事件");
+	const restored = dialog.latest().component;
+	restored.handleInput("\x1b[B");
+	assert.match(partRows(restored.render(64))[1] ?? "", /^│›.*Memory/);
+	dialog.latest().component.handleInput("\x1b");
+	await dialog.running;
+	assert.equal(hasActiveTextPreview(), false, "主弹框关闭后释放活动状态");
+});
+
+test("context dialog keeps every line inside the narrow border", async () => {
+	const dialog = contextDialogHarness();
+	const lines = dialog.latest().component.render(44);
+	assert.ok(
+		lines.every((line: string) => visibleWidth(line) === 44),
+		"窄宽度下仍不破框",
+	);
+	for (const row of partRows(lines)) assert.match(row, /\d\.\d% │$/, row);
+	assert.ok(
+		partRows(lines).some((row) => row.includes("■ Tools definition")),
+		"长 label 不被数字列挤掉",
+	);
+
+	dialog.latest().component.handleInput("\x1b");
+	await dialog.running;
+});
+
+test("context reports the breakdown through notify outside the TUI", async () => {
+	const dialog = contextDialogHarness({ mode: "rpc" });
+	await dialog.running;
+	assert.equal(dialog.overlays.length, 0, "非 TUI 模式不挂 overlay");
+	assert.equal(dialog.notifications.length, 1);
+	assert.match(dialog.notifications[0] ?? "", /Free space: /);
+});
+
+test("context dialog opens the preview matched by a row click", async () => {
+	const dialog = contextDialogHarness();
+	const main = dialog.latest();
+	main.component.render(64);
+	// 局部 y=6 是 Memory 行。release 与右键都不能触发动作。
+	main.component.handleMouse({ type: "release", x: 10, y: 6, button: "left" });
+	main.component.handleMouse({ type: "press", x: 10, y: 6, button: "right" });
+	await tick();
+	assert.equal(dialog.overlays.length, 1, "release 与右键不打开预览");
+
+	main.component.handleMouse({ type: "press", x: 10, y: 6, button: "left" });
+	await tick();
+	assert.equal(dialog.overlays.length, 2);
+	const lines = dialog.overlays[1]!.component.render(64);
+	assert.ok(
+		lines.some((line: string) => line.includes("Memory Files")),
+		"点到哪行就开哪行的预览",
+	);
+
+	dialog.overlays[1]!.component.handleInput("\x1b");
+	await tick();
+	dialog.latest().component.handleInput("\x1b");
+	await dialog.running;
 });

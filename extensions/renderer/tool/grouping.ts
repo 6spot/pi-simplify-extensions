@@ -25,7 +25,12 @@ import {
 import { isMcpToolDefinition, mcpToolTitle } from "./mcp-title.ts";
 import { collapseHintText, isToolTuiFullscreen, showMoreHintText } from "./names.ts";
 import { argumentPreview } from "../../utils/argument-preview.ts";
-import { stripAnsi, stripBackgroundAnsi, stripLeadingStatusIcon } from "../../utils/ansi-text.ts";
+import {
+	imagePlacement,
+	stripAnsi,
+	stripBackgroundAnsi,
+	stripLeadingStatusIcon,
+} from "../../utils/ansi-text.ts";
 import { walkComponentTree } from "../../utils/component-tree.ts";
 import {
 	fitToolCallSummary,
@@ -150,7 +155,19 @@ function statusColor(value: ToolStatus): string {
 }
 
 function visibleLines(lines: string[]): string[] {
-	return lines.filter((line) => stripAnsi(line).trim());
+	const keep = new Set<number>();
+	for (let index = 0; index < lines.length; index++) {
+		const placement = imagePlacement(lines[index]);
+		if (!placement) {
+			if (stripAnsi(lines[index]).trim()) keep.add(index);
+			continue;
+		}
+		// 图片锚点之外的空行也占终端空间，裁掉后会覆盖后续工具。
+		const start = placement.grows === "up" ? index - placement.rows + 1 : index;
+		const end = placement.grows === "down" ? index + placement.rows - 1 : index;
+		for (let row = Math.max(0, start); row <= Math.min(lines.length - 1, end); row++) keep.add(row);
+	}
+	return lines.filter((_line, index) => keep.has(index));
 }
 
 function stripLeadingSpaces(line: string, count: number): string {

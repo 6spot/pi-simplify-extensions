@@ -32,6 +32,20 @@ export function hasVisibleText(line: string): boolean {
 	return line.replace(CSI_SEQUENCE_RE, "").replace(OSC_SEQUENCE_STRICT_RE, "").trim().length > 0;
 }
 
+/** 内联图片相对锚点占用的行：Kitty 向下铺，iTerm2 先上移再绘制。 */
+export function imagePlacement(line: string): { rows: number; grows: "down" | "up" } | undefined {
+	const kittyControls = /\x1b_G([^;]*);/.exec(line)?.[1];
+	if (kittyControls !== undefined) {
+		const rows = Number(/(?:^|,)r=(\d+)(?:,|$)/.exec(kittyControls)?.[1]);
+		return { rows: rows >= 1 ? rows : 1, grows: "down" };
+	}
+	if (line.includes("\x1b]1337;File=")) {
+		const up = Number(/\x1b\[(\d+)A/.exec(line)?.[1]);
+		return { rows: up >= 1 ? up + 1 : 1, grows: "up" };
+	}
+	return undefined;
+}
+
 /** 剥离背景色 ANSI（用于重新铺背景行）。 */
 export function stripBackgroundAnsi(line: string): string {
 	return line.replace(/\x1b\[(?:4[0-9]|10[0-7]|48(?:(?:;|:)[0-9]+)+|49)m/g, "");
