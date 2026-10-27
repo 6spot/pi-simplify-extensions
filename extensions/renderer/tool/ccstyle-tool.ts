@@ -481,6 +481,15 @@ export function createCcstyleTool(
 			const expanded = isToolExpanded(options, context);
 			const isError = Boolean(options?.isError || context?.isError || result?.isError);
 			result = { ...context?.result, ...result, isError };
+			const visualState = toolCardStatus({
+				toolName,
+				toolDefinition: originalTool,
+				result,
+				isError,
+				isPartial: Boolean(options?.isPartial),
+			});
+			const displayError = isError && visualState !== "cancelled";
+			setToolVisualState(context, visualState);
 			if (generic && expanded && typeof originalTool.renderResult === "function") {
 				try {
 					const originalView = originalTool.renderResult(result, options, theme, context);
@@ -492,7 +501,6 @@ export function createCcstyleTool(
 			if (!generic && toolName === "update_plan" && !isError && !result?.isError) {
 				const plan = planFromResult(result);
 				if (plan) {
-					if (!options?.isPartial) setToolVisualState(context, "success");
 					if (context?.state) context.state.ccstyleIoView = undefined;
 					return createPlanResultComponent({
 						plan,
@@ -509,12 +517,11 @@ export function createCcstyleTool(
 			}
 			// codemode：折叠态自己画子调用树，展开态给全部子调用与去掉脚本头的输出
 			if (!generic && toolName === CODEMODE_TOOL_NAME) {
-				if (!options?.isPartial) setToolVisualState(context, isError ? "error" : "success");
 				if (expanded) {
 					return renderExpandedToolResult(
 						codemodeExpandedBody(result),
 						theme,
-						isError,
+						displayError,
 						context?.lastComponent,
 						context?.args,
 						context,
@@ -528,19 +535,18 @@ export function createCcstyleTool(
 					result,
 					theme,
 					running: Boolean(options?.isPartial),
-					isError,
+					isError: displayError,
 					isHovered: () => isToolCallHovered(toolCallId),
 					code: context?.args?.code,
 				});
 			}
 			// ask_user_question：折叠态摊成问答树，展开态按问题逐条列出选择。
 			if (!generic && toolName === ASK_USER_QUESTION_TOOL_NAME) {
-				if (!options?.isPartial) setToolVisualState(context, isError ? "error" : "success");
 				if (options?.isPartial) {
 					return createAskUserResultComponent({
 						result,
 						theme,
-						isError,
+						isError: displayError,
 						args: context?.args,
 						running: true,
 					});
@@ -549,7 +555,7 @@ export function createCcstyleTool(
 					return renderExpandedToolResult(
 						askUserExpandedBody(result),
 						theme,
-						isError,
+						displayError,
 						context?.lastComponent,
 						context?.args,
 						context,
@@ -561,18 +567,17 @@ export function createCcstyleTool(
 				return createAskUserResultComponent({
 					result,
 					theme,
-					isError,
+					isError: displayError,
 					args: context?.args,
 					isHovered: () => isToolCallHovered(toolCallId),
 				});
 			}
 			if (!generic && FILE_PANEL_TOOL_NAMES.has(toolName)) {
-				if (!options?.isPartial) setToolVisualState(context, isError ? "error" : "success");
 				if (expanded)
 					return renderExpandedToolResult(
 						fileToolText(result, true),
 						theme,
-						Boolean(isError),
+						displayError,
 						context?.lastComponent,
 						context?.args,
 						context,
@@ -591,13 +596,12 @@ export function createCcstyleTool(
 				if (!options?.isPartial) {
 					if (context?.state && context.state.ccstyleShellEndedAt === undefined)
 						context.state.ccstyleShellEndedAt = Date.now();
-					setToolVisualState(context, isError ? "error" : "success");
 				}
 				if (expanded)
 					return renderExpandedToolResult(
 						bashOutputText(result),
 						theme,
-						Boolean(isError),
+						displayError,
 						context?.lastComponent,
 						context?.args,
 						context,
@@ -629,7 +633,6 @@ export function createCcstyleTool(
 				};
 			}
 
-			setToolVisualState(context, options?.isPartial ? "pending" : isError ? "error" : "success");
 			const toolCallId = context?.toolCallId;
 			if (!generic && shouldRenderRichDiff(toolName, Boolean(isError))) {
 				// getter 保证 Diff indicator / wrap / limits 下次绘制即更新
@@ -655,14 +658,14 @@ export function createCcstyleTool(
 			const { text, displayLimited } = resultTextView(result, expanded);
 			const args = context?.args;
 			if (expanded) {
-				const taskResult = renderExpandedTaskResult(toolName, text, theme, Boolean(isError));
+				const taskResult = renderExpandedTaskResult(toolName, text, theme, displayError);
 				if (taskResult) return taskResult;
 			}
 			if (expanded) {
 				const view = renderExpandedToolResult(
 					text || "",
 					theme,
-					Boolean(isError),
+					displayError,
 					context?.lastComponent,
 					args,
 					context,
@@ -687,7 +690,7 @@ export function createCcstyleTool(
 							maxRows: 4,
 						});
 						cachedRows = preview.rows.map(
-							(row) => `   ${theme.fg(isError ? "error" : "muted", row)}`,
+							(row) => `   ${theme.fg(displayError ? "error" : "muted", row)}`,
 						);
 						if (preview.omitted)
 							cachedRows.push(

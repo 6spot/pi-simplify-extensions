@@ -97,6 +97,7 @@ test("Bash cancellation, timeout, and unknown errors preserve their actual reaso
 	const cleanup = install();
 	try {
 		for (const [text, label] of [
+			["Operation aborted", "Cancelled"],
 			["partial log\n\nCommand aborted", "Cancelled"],
 			["partial log\n\nCommand timed out after 2 seconds", "Timed out"],
 			["Command terminated without an exit code", undefined],
@@ -110,7 +111,16 @@ test("Bash cancellation, timeout, and unknown errors preserve their actual reaso
 			assert.match(painted, label === "Cancelled" ? /– Bash/ : /✗ Bash/);
 			assert.ok(painted.includes(text.split("\n").at(-1)!));
 			assert.doesNotMatch(painted, /exit 0|✓ Bash|\d+ms/);
+			slots.length = 0;
+			tool.setExpanded(true);
+			const expanded = render(tool);
+			assert.match(expanded, label === "Cancelled" ? /– Bash/ : /✗ Bash/);
+			assert.ok(expanded.includes(text.split("\n").at(-1)!));
+			assert.ok(slots.includes(label === "Cancelled" ? "toolPendingBg" : "toolErrorBg"));
+			if (label === "Cancelled") assert.ok(!slots.includes("toolErrorBg"));
+			assert.equal(result.isError, true, "rendering preserves Pi's original error flag");
 		}
+		assert.equal(bashStatusText(output("Operation aborted"), false), undefined);
 		assert.equal(bashStatusText(output("Command aborted"), false), undefined);
 		assert.equal(bashStatusText(output("Command exited with code 8"), false), undefined);
 		assert.equal(

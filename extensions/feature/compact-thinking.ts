@@ -798,7 +798,7 @@ function compactThinking(pi: ExtensionAPI) {
 				self.contentContainer.addChild(new Spacer(1));
 				self.contentContainer.addChild(
 					new Text(
-						activeTheme ? activeTheme.fg("error", abortMessage) : abortMessage,
+						activeTheme ? activeTheme.fg("muted", abortMessage) : abortMessage,
 						self.outputPad,
 						0,
 					),

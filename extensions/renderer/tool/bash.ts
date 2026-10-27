@@ -9,6 +9,7 @@ import {
 } from "./names.ts";
 import { boundedTextPreview } from "./preview.ts";
 import { textFromResult } from "./result.ts";
+import { toolWasCancelled } from "./tool-state.ts";
 
 /** Preserve the returned output and native truncation/path notes, including on errors. */
 export function bashOutputText(result: any): string {
@@ -35,13 +36,13 @@ export function bashOutputText(result: any): string {
 /** Only report an exit code/reason actually supplied by Pi; output prose is not status. */
 export function bashStatusText(result: any, isPartial: boolean): string | undefined {
 	if (!result || isPartial) return;
+	if (toolWasCancelled("bash", result)) return "Cancelled";
 	const code = result.structuredContent?.exit_code;
 	if (typeof code === "number" && Number.isSafeInteger(code)) return `exit ${code}`;
 	if (!result.isError) return;
 	const text = bashOutputText(result);
 	const exit = /(?:^|\n)Command exited with code (-?\d+)\s*$/.exec(text);
 	if (exit) return `exit ${exit[1]}`;
-	if (/(?:^|\n)Command aborted\s*$/.test(text)) return "Cancelled";
 	if (/(?:^|\n)Command timed out after [^\n]+\s*$/.test(text)) return "Timed out";
 }
 

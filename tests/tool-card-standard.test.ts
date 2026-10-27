@@ -187,6 +187,68 @@ test("known native cancellation differs from failed abort prose and unrelated bu
 	);
 });
 
+test("cancelled native results stay neutral when folded or expanded, while failures and MCP abort prose stay errors", () => {
+	const errorText: string[] = [];
+	const colorTheme = {
+		...theme,
+		fg: (slot: string, text: string) => {
+			if (slot === "error") errorText.push(text);
+			return text;
+		},
+	};
+	for (const name of [
+		"read",
+		"grep",
+		"find",
+		"bash",
+		"powershell",
+		"edit",
+		"write",
+		"ask_user_question",
+	]) {
+		for (const mcp of [false, true]) {
+			const definition = { name, label: mcp ? `MCP: remote_${name}` : name };
+			const tool = createCcstyleTool(definition, new WriteExecutionMetadataStore(), name);
+			for (const cancelled of [true, false]) {
+				const result = output(cancelled ? "Operation aborted" : "Permission denied", {
+					isError: true,
+					...(name === "ask_user_question" && cancelled ? { details: { cancelled: true } } : {}),
+				});
+				for (const expanded of [false, true]) {
+					const context = {
+						toolName: name,
+						simplifyMcpSource: mcp,
+						args: { path: "a.ts", command: "echo ready" },
+						result,
+						state: {} as any,
+						isError: true,
+						isPartial: false,
+						expanded,
+					};
+					errorText.length = 0;
+					const body = paint(
+						tool.renderResult(result, { expanded, isPartial: false }, colorTheme, context),
+					).join("\n");
+					const title = paint(tool.renderCall(context.args, colorTheme, context)).join("\n");
+					const neutral = cancelled && !mcp;
+					const label = `${name} ${mcp ? "MCP" : "native"} ${expanded ? "expanded" : "folded"}`;
+					assert.equal(
+						context.state.ccstyleToolVisualState,
+						neutral ? "cancelled" : "error",
+						label,
+					);
+					assert.match(title, neutral ? /–/ : /✗/, label);
+					assert.equal(errorText.length === 0, neutral, label);
+					if (name !== "ask_user_question" || mcp)
+						assert.ok(body.includes(result.content[0].text), label);
+					else if (cancelled) assert.match(body, expanded ? /Declined/ : /Cancelled/, label);
+					assert.equal(result.isError, true, label);
+				}
+			}
+		}
+	}
+});
+
 test("groups bound six summaries, retain failed/cancelled counts while running and expose details under one parent control", () => {
 	const dispose = install();
 	const grouping = installToolGrouping(() => true);
