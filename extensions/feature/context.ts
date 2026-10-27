@@ -152,12 +152,17 @@ export async function showTextPreview(
 	ctx: Pick<ExtensionCommandContext, "ui">,
 	title: string,
 	rawContent: string,
+	signal?: AbortSignal,
 ): Promise<void> {
+	if (signal?.aborted) return;
 	const content = normalizePreviewText(rawContent);
+	let closePreview: (() => void) | undefined;
 	activeContextOverlays++;
 	try {
 		await ctx.ui.custom(
 			(tui, theme, _keybindings, done) => {
+				closePreview = () => done(undefined);
+				signal?.addEventListener("abort", closePreview, { once: true });
 				ensureFullscreenMouseMotion(tui);
 				let scrollOffset = 0;
 				let pageSize = 1;
@@ -450,6 +455,7 @@ export async function showTextPreview(
 			},
 		);
 	} finally {
+		if (closePreview) signal?.removeEventListener("abort", closePreview);
 		activeContextOverlays--;
 	}
 }

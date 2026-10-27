@@ -142,13 +142,29 @@ function interactionRegionAt(packet: SgrMousePacket): InteractionRegion | null {
 	);
 }
 
-function showToolPreview(title: string, content: string): boolean {
+const activeToolPreviews = new Set<{ component: any; controller: AbortController }>();
+
+function closeToolPreviewsFor(card: any): void {
+	for (const preview of activeToolPreviews) {
+		if (preview.component === card || preview.component?.[TOOL_GROUPING_PARENT_KEY] === card) {
+			preview.controller.abort();
+		}
+	}
+}
+
+function showToolPreview(component: any, title: string, content: string): boolean {
 	const ui = toolMouseUi;
 	if (!ui || typeof ui.custom !== "function") {
 		ui?.notify?.("Full preview requires TUI custom UI", "warning");
 		return true;
 	}
-	void showTextPreview({ ui }, title, content || "(empty)");
+	const preview = { component, controller: new AbortController() };
+	activeToolPreviews.add(preview);
+	void showTextPreview({ ui }, title, content || "(empty)", preview.controller.signal).finally(
+		() => {
+			activeToolPreviews.delete(preview);
+		},
+	);
 	return true;
 }
 
@@ -176,7 +192,7 @@ function tryOpenComponentPreview(component: any): boolean {
 		body = `${body.slice(0, PREVIEW_TEXT_LIMIT)}\n… Preview limited to ${PREVIEW_TEXT_LIMIT} characters`;
 	}
 	if (!body.trim()) return false;
-	return showToolPreview(result ? "Tool Output" : "Tool Input", body);
+	return showToolPreview(component, result ? "Tool Output" : "Tool Input", body);
 }
 
 function tryOpenToolIoShowMore(region: InteractionRegion): boolean {
@@ -187,6 +203,7 @@ function tryOpenToolIoShowMore(region: InteractionRegion): boolean {
 	// Whole-code bodies are fenced so the modal's Markdown renderer highlights them.
 	const fence = section === "input" ? ioView.getInputCodeFence() : undefined;
 	return showToolPreview(
+		region.component,
 		section === "input" ? "Tool Input" : "Tool Output",
 		fence ? `\`\`\`${fence.language}\n${fence.code}\n\`\`\`` : content,
 	);
@@ -268,6 +285,7 @@ function clearHoverState(): void {
 /** 收起一张展开卡（group 的 setExpanded 会传播到内部工具）。 */
 function collapseExpandedCard(tui: any, card: any): void {
 	card.setExpanded(false);
+	closeToolPreviewsFor(card);
 	clearHoverState();
 	card.invalidate?.();
 	tui?.requestRender?.();
@@ -511,6 +529,7 @@ function handleFullscreenToolClick(tui: any, packet: SgrMousePacket): boolean {
 				// 面板挂在摘要行时，anchor 与摘要行是同一张外层卡，点内部工具不能收起它。
 				// 同一回合的摘要行、anchor 和其他消息都是外层面板，收起任一个都会关掉整块。
 				other.setExpanded(false);
+				closeToolPreviewsFor(other);
 				other.invalidate?.();
 			}
 		}
@@ -1138,6 +1157,8 @@ export function teardownToolMouseInteraction(
 ): void {
 	const current = patchRegistry.get<object>(TOOL_MOUSE_OWNER_KEY);
 	if (current && current !== owner) return;
+	for (const preview of activeToolPreviews) preview.controller.abort();
+	activeToolPreviews.clear();
 	if (sessionRenderTimer) {
 		clearTimeout(sessionRenderTimer);
 		sessionRenderTimer = null;

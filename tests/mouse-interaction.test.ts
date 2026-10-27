@@ -9,6 +9,7 @@ import claudeCodeStyleExtension, {
 	installToolMouseInteraction,
 	SHOW_MORE_LABEL,
 } from "../extensions/renderer/index.ts";
+import { hasActiveTextPreview } from "../extensions/feature/context.ts";
 import { installToolGrouping, ToolGroupComponent } from "../extensions/renderer/tool/grouping.ts";
 import {
 	renderRichToolResult,
@@ -337,7 +338,7 @@ test("show-more hover targets the view rendered in the current frame after compa
 	}
 });
 
-test("expanded tool group show-more opens preview instead of collapsing the group", () => {
+test("expanded group Input and Output previews close when the background group collapses", async () => {
 	const grouping = installToolGrouping(() => true);
 	grouping.setTheme({
 		fg: (color: string, text: string) => text,
@@ -346,6 +347,7 @@ test("expanded tool group show-more opens preview instead of collapsing the grou
 	});
 	let inputHandler: ((data: string) => { consume?: boolean } | undefined) | undefined;
 	let previewOpened = false;
+	let previewClosed = false;
 	try {
 		const theme = {
 			fg: (_color: string, text: string) => text,
@@ -355,20 +357,22 @@ test("expanded tool group show-more opens preview instead of collapsing the grou
 		const ui = {
 			theme,
 			requestRender() {},
-			custom: async (factory: any) => {
-				previewOpened = true;
-				factory?.(
-					{
-						requestRender() {},
-						rows: 40,
-						columns: 100,
-					},
-					theme,
-					{},
-					() => {},
-				);
-				return undefined;
-			},
+			custom: (factory: any) =>
+				new Promise<void>((resolve) => {
+					previewOpened = true;
+					factory?.(
+						{
+							requestRender() {},
+							terminal: { rows: 40, columns: 100 },
+						},
+						theme,
+						{},
+						() => {
+							previewClosed = true;
+							resolve();
+						},
+					);
+				}),
 			notify() {},
 		} as any;
 		const parent = new Container() as any;
@@ -426,20 +430,127 @@ test("expanded tool group show-more opens preview instead of collapsing the grou
 				},
 			},
 		});
-		tui.doRender();
-		const showMoreRow = tui.previousLines.findIndex((line: string) =>
-			line.includes("Open preview"),
-		);
-		assert.ok(showMoreRow >= 0, "expanded group must paint a preview title control");
-		const col = tui.previousLines[showMoreRow].indexOf("Open preview") + 1;
-		inputHandler?.(`\x1b[<35;${col};${showMoreRow + 1}M`);
-		const beforeExpanded = group.expanded;
-		assert.equal(inputHandler?.(`\x1b[<0;${col};${showMoreRow + 1}M`)?.consume, true);
-		assert.equal(group.expanded, beforeExpanded, "show-more must not collapse the group");
-		assert.equal(previewOpened, true, "show-more opens the text preview");
+		for (const section of ["Input", "Output"]) {
+			group.setExpanded(true);
+			previewOpened = false;
+			previewClosed = false;
+			tui.doRender();
+			const showMoreRow = tui.previousLines.findIndex(
+				(line: string) => line.includes(section) && line.includes("Open preview"),
+			);
+			assert.ok(showMoreRow >= 0, `${section} must paint a preview title control`);
+			const col = tui.previousLines[showMoreRow].indexOf("Open preview") + 1;
+			inputHandler?.(`\x1b[<35;${col};${showMoreRow + 1}M`);
+			assert.equal(inputHandler?.(`\x1b[<0;${col};${showMoreRow + 1}M`)?.consume, true);
+			assert.equal(group.expanded, true, "Open preview must not collapse the group");
+			assert.equal(previewOpened, true);
+			assert.equal(previewClosed, false);
+
+			const backgroundRow = tui.previousLines.length;
+			inputHandler?.(`\x1b[<0;100;${backgroundRow}M`);
+			assert.equal(previewClosed, false, "press alone keeps the preview open");
+			inputHandler?.(`\x1b[<0;100;${backgroundRow + 4}m`);
+			assert.equal(group.expanded, true, "dragging keeps the group expanded");
+			assert.equal(previewClosed, false, "dragging keeps its preview open");
+			assert.deepEqual(
+				(childTool as any).handleMouse({ type: "click", button: "left", x: 1, y: 0 }),
+				{ handled: true },
+			);
+			assert.equal(group.expanded, false, "native background click collapses the group");
+			assert.equal(childTool.expanded, false);
+			assert.equal(previewClosed, true, "collapsing the group closes the child preview");
+			await new Promise<void>((resolve) => process.nextTick(resolve));
+		}
 	} finally {
 		installToolMouseInteraction({});
 		grouping.shutdown();
+	}
+});
+
+test("tool preview follows its source card and is cleaned up on close and teardown", async () => {
+	let inputHandler: ((data: string) => { consume?: boolean } | undefined) | undefined;
+	let previewComponent: any;
+	let closeCount = 0;
+	const theme = {
+		fg: (_color: string, text: string) => text,
+		bold: (text: string) => text,
+		bg: (_slot: string, text: string) => text,
+	};
+	const tools = ["source", "unrelated"].map((toolCallId) => {
+		const view = new ExpandedToolIoView(theme, "input", "output\n".repeat(10), false, 1, 1);
+		return {
+			toolCallId,
+			expanded: true,
+			setExpanded(value: boolean) {
+				this.expanded = value;
+			},
+			invalidate() {},
+			render: () => ["✓ Tool · Collapse", ...view.render(78)],
+		};
+	});
+	const source = tools[0];
+	const unrelated = tools[1];
+	const tui = {
+		terminal: { columns: 80, rows: 40, write() {} },
+		children: tools,
+		previousLines: [] as string[],
+		previousViewportTop: 0,
+		requestRender() {},
+		doRender() {
+			this.previousLines = tools.flatMap((tool) => tool.render());
+		},
+	};
+	installToolMouseInteraction({
+		mode: "tui",
+		hasUI: true,
+		ui: {
+			setWidget(_key: string, factory: any) {
+				factory?.(tui, theme);
+			},
+			onTerminalInput(handler: typeof inputHandler) {
+				inputHandler = handler;
+				return () => undefined;
+			},
+			custom: (factory: any) =>
+				new Promise<void>((resolve) => {
+					previewComponent = factory(tui, theme, {}, () => {
+						closeCount++;
+						resolve();
+					});
+				}),
+		} as any,
+	});
+	try {
+		for (const close of ["collapse", "esc", "teardown"]) {
+			source.setExpanded(true);
+			tui.doRender();
+			const row = tui.previousLines.findIndex(
+				(line) => line.includes("Output") && line.includes("Open preview"),
+			);
+			assert.ok(row >= 0);
+			const col = tui.previousLines[row].indexOf("Open preview") + 1;
+			assert.equal(inputHandler?.(`\x1b[<0;${col};${row + 1}M`)?.consume, true);
+			const beforeClose = closeCount;
+			const nativeClick = { type: "click", button: "left", x: 0, y: 0 };
+			if (close === "collapse") {
+				(ToolExecutionComponent.prototype as any).handleMouse.call(unrelated, nativeClick);
+				assert.equal(unrelated.expanded, false);
+				assert.equal(closeCount, beforeClose, "collapsing another card keeps this preview open");
+				(ToolExecutionComponent.prototype as any).handleMouse.call(source, nativeClick);
+				assert.equal(source.expanded, false);
+			} else if (close === "esc") {
+				previewComponent.handleInput("\x1b");
+				await new Promise<void>((resolve) => process.nextTick(resolve));
+				(ToolExecutionComponent.prototype as any).handleMouse.call(source, nativeClick);
+			} else {
+				installToolMouseInteraction({});
+			}
+			await new Promise<void>((resolve) => process.nextTick(resolve));
+			assert.equal(closeCount, beforeClose + 1, `${close} closes the current preview once`);
+			assert.equal(hasActiveTextPreview(), false);
+		}
+	} finally {
+		installToolMouseInteraction({});
 	}
 });
 

@@ -2,6 +2,7 @@
 // [esc] 按钮位于弹框标题行（box 第 2 行）右端，5 列宽；
 // bounds 为 0-based 的弹框起点（left/top）+ 宽度。
 import assert from "node:assert/strict";
+import { getEventListeners } from "node:events";
 import test from "node:test";
 import { formatSkillsForPrompt, initTheme } from "@earendil-works/pi-coding-agent";
 import { rgbColor, visibleWidth } from "@earendil-works/pi-tui";
@@ -303,6 +304,43 @@ function textPreviewHarness(
 		},
 	};
 }
+
+test("showTextPreview abort closes only its own overlay and releases the listener", async () => {
+	const controller = new AbortController();
+	const ui = textPreviewHarness();
+	const unrelatedUi = textPreviewHarness();
+	const preview = showTextPreview({ ui } as any, "Tool Output", "hello", controller.signal);
+	const unrelated = showTextPreview({ ui: unrelatedUi } as any, "Context", "other content");
+	assert.equal(hasActiveTextPreview(), true);
+	assert.equal(getEventListeners(controller.signal, "abort").length, 1);
+	controller.abort();
+	await preview;
+	assert.equal(getEventListeners(controller.signal, "abort").length, 0);
+	assert.equal(hasActiveTextPreview(), true, "the unrelated preview stays open");
+	unrelatedUi.component.handleInput("\x1b");
+	await unrelated;
+	assert.equal(hasActiveTextPreview(), false);
+});
+
+test("showTextPreview releases its abort listener after a normal close", async () => {
+	const controller = new AbortController();
+	const ui = textPreviewHarness();
+	const preview = showTextPreview({ ui } as any, "Tool Input", "hello", controller.signal);
+	ui.component.handleInput("\x1b");
+	await preview;
+	assert.equal(getEventListeners(controller.signal, "abort").length, 0);
+	controller.abort();
+	assert.equal(hasActiveTextPreview(), false);
+});
+
+test("showTextPreview does not mount an already aborted preview", async () => {
+	const controller = new AbortController();
+	controller.abort();
+	const ui = textPreviewHarness();
+	await showTextPreview({ ui } as any, "Output", "hello", controller.signal);
+	assert.equal(ui.component, undefined);
+	assert.equal(hasActiveTextPreview(), false);
+});
 
 test("showTextPreview closes from a regular-mode SGR click without overlay layout", async () => {
 	const tui = { terminal: { columns: 80, rows: 24 }, requestRender() {} };
