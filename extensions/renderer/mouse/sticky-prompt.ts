@@ -37,7 +37,7 @@ const KITTY_IMAGE = "\x1b_G";
 const ITERM2_IMAGE = "\x1b]1337;File=";
 
 const STICKY_LEAD = " ";
-const STICKY_HINT_TEXT = " [click to jump]";
+const STICKY_HINT_TEXT = " [jump]";
 /** 视口宽度低于该值时不画点击提示，先保证正文省得下。 */
 const STICKY_HINT_MIN_WIDTH = 24;
 

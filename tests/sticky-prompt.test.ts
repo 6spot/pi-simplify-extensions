@@ -174,7 +174,7 @@ test("sticky prompt: tall user message pins its first line at the viewport top",
 			stickyPromptBar(info!.text, VIEWPORT_WIDTH, false, theme),
 		);
 		assert.match(plain(rendered[0] ?? ""), /^ Long pasted compiler output/);
-		assert.match(plain(rendered[0] ?? ""), /\[click to jump\]$/);
+		assert.match(plain(rendered[0] ?? ""), /\[jump\]$/);
 		assert.equal(visibleWidth(rendered[0] ?? ""), VIEWPORT_WIDTH);
 		assert.deepEqual([...new Set(slots)], ["userMessageBg"], "底色与用户消息同槽位");
 		assert.ok(
@@ -450,15 +450,19 @@ test("sticky prompt: real alt-screen frame pins the row and strips markers", () 
 		installStickyPromptPatches();
 		const firstRow = () => stripTerminalSequences(frame.tui.getScreenLines()[0] ?? "");
 		const longPrompt = [
-			"click 文本前不要有点，同时点击跳转后由于原生 userMessage box 有上有 padding，上方展示不全",
+			"click 文本前不要有点，同时点击跳转后由于原生 userMessage box 有上有 padding，上方展示不全，需要按省略号截断",
 			...Array.from({ length: 40 }, (_, i) => `log ${i}`),
 		].join("\n");
 		const frame = realFrame(longPrompt, 120);
 
-		assert.doesNotMatch(frame.render(0), /\[click to jump\]/, "消息头在场时不钉");
-		assert.doesNotMatch(frame.render(1), /\[click to jump\]/, "正文首行在视口上沿时不钉");
+		assert.doesNotMatch(frame.render(0), /\[jump\]/, "消息头在场时不钉");
+		assert.doesNotMatch(frame.render(1), /\[jump\]/, "正文首行在视口上沿时不钉");
 		assert.match(frame.render(3), /^ click 文本前/, "正文首行滚出后钉住");
-		assert.match(firstRow(), /… \[click to jump\]/, "截断处有省略号，提示在同一行");
+		assert.match(
+			firstRow(),
+			/…\s*\[jump\]/,
+			"截断处有省略号，提示在同一行（宽字符截断可能在省略号后补空格）",
+		);
 		assert.match(frame.render(100), /^ click 文本前/, "消息滚过、进入助手区仍钉住");
 		assert.ok(
 			frame.tui.getScreenLines().every((line: string) => !line.includes(START)),
@@ -467,7 +471,7 @@ test("sticky prompt: real alt-screen frame pins the row and strips markers", () 
 		// 截断插入的样式重置不得把后面的提示踢出底色。
 		const rawRow = frame.tui.getScreenLines()[0] ?? "";
 		const barStart = rawRow.indexOf("click 文本前");
-		const hintEnd = rawRow.indexOf("[click to jump]") + "[click to jump]".length;
+		const hintEnd = rawRow.indexOf("[jump]") + "[jump]".length;
 		assert.ok(barStart >= 0 && hintEnd > barStart, "粘性行在帧里");
 		assert.equal(rawRow.slice(barStart, hintEnd).includes("[0m"), false, "提示之前不得有样式重置");
 
@@ -476,7 +480,7 @@ test("sticky prompt: real alt-screen frame pins the row and strips markers", () 
 		assert.equal(handleStickyPromptClick(frame.tui, { row: 1, col: 5 } as any), true);
 		assert.equal(frame.scroll.scrollTop, 0, "跳转目标是消息首行");
 		frame.tui.doRender();
-		assert.doesNotMatch(firstRow(), /\[click to jump\]/, "指令可见后粘性行收走");
+		assert.doesNotMatch(firstRow(), /\[jump\]/, "指令可见后粘性行收走");
 	});
 });
 
@@ -563,7 +567,7 @@ test("sticky prompt: truncated text keeps the bar styling across the whole row",
 	assert.equal(visibleWidth(bar), 40);
 	assert.equal(wrapped.length, 1, "整行只包一层底色");
 	assert.doesNotMatch(wrapped[0] ?? "", /\x1b\[/, "底色内部不得残留样式重置");
-	assert.match(wrapped[0] ?? "", /\[click to jump\]$/, "提示与正文同时色同底");
+	assert.match(wrapped[0] ?? "", /\[jump\]$/, "提示与正文同时色同底");
 	assert.equal(textColor, "dim");
 	assert.match(bar, /…/);
 });
@@ -572,6 +576,6 @@ test("sticky prompt: narrow viewport drops the click hint before the text", () =
 	const { theme } = fakeTheme();
 	const narrow = stickyPromptBar("a much longer user message than fits", 16, false, theme);
 	assert.equal(visibleWidth(narrow), 16);
-	assert.doesNotMatch(narrow, /\[click to jump\]/);
+	assert.doesNotMatch(narrow, /\[jump\]/);
 	assert.match(narrow, /^ /);
 });
