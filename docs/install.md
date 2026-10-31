@@ -86,8 +86,6 @@ pi install git:github.com/6spot/pi-simplify-extensions
 
 启用本仓库对应的包前，先禁用或移走旧的同名扩展，避免重复注册。尤其检查 `~/.pi/agent/extensions/subagent`、`question.ts`、`handoff.ts`，以及 `settings.json` 中已有的其他 Simplify 来源。备份应放在 `extensions` 目录之外，以免被继续自动发现。
 
-Otty 的 `otty-integration.ts` 由 Otty 应用生成，包含终端应用路径和用户 IPC Socket。新机器使用 Otty 时，由该机器上的 Otty 重新安装集成；不复制旧机器生成的文件。
-
 ## 更新
 
 ```bash
