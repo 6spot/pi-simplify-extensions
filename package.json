@@ -21,6 +21,9 @@
 	"files": [
 		"extensions",
 		"themes",
+		"subagent",
+		"companions",
+		"docs/install.md",
 		"simplify.json",
 		"README.md",
 		"LICENSE"

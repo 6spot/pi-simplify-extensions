@@ -10,6 +10,7 @@
 - 保留官方 Pi Logo 和启动欢迎界面。
 - 保留工具卡、分组、折叠、Rich Diff、Compact Thinking、鼠标操作和 Fullscreen；不恢复整回合 Compact Mode。
 - 工具渲染模式固定为 `on`。配置集中在 `simplify.json`，只保留有实际用途的选项；不恢复 `/ccstyle` 面板、旧配置兼容层和固定功能的开关。
+- 主包默认只加载 Simplify 展示与主题；`subagent/` 和 `companions/` 通过各自包入口单独安装。Subagent 复用父目录代码，完整迁移须保留整个仓库，步骤见 [跨机器安装说明](docs/install.md)。本机生成的终端集成、模型凭据和会话历史不作为包内容提交。
 
 ## 修改流程
 

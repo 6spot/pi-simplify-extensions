@@ -4,13 +4,21 @@
 
 ## 加载
 
-此目录独立于 Simplify 的展示扩展，未加入根 `package.json` 的默认扩展入口。首次加载可使用：
+此目录独立于 Simplify 的展示扩展，未加入根 `package.json` 的默认扩展入口。克隆完整仓库并在根目录执行 `npm ci` 后，可以持久安装：
+
+```bash
+pi install /absolute/path/pi-simplify-extensions/subagent
+```
+
+此包复用父目录的展示代码，须保留整个仓库，不可只复制本目录。通用 Agent 角色位于 `subagent/agents/`，按 [跨机器安装说明](../docs/install.md) 复制到个人 Agent 目录。角色不指定模型，默认继承父任务的模型。
+
+仅为一次会话临时加载可使用：
 
 ```bash
 pi --extension /absolute/path/pi-simplify-extensions/subagent/index.ts
 ```
 
-已有官方示例时，应先把 `~/.pi/agent/extensions/subagent` 备份到 **extensions 目录之外**，再把该路径链接到本目录，避免同时注册两个 `subagent`。如果原路径是软链接，先记录原目标，不修改目标中的上游文件。完成安装后，现有会话需 `/reload`，新会话会直接加载。
+已有官方示例时，应先把 `~/.pi/agent/extensions/subagent` 备份到 **extensions 目录之外**，再使用上述包安装，避免同时注册两个 `subagent`。如果原路径是软链接，先记录原目标，不修改目标中的上游文件。完成安装后，现有会话需 `/reload`，新会话会直接加载。
 
 无需增加配置。当 `subagent` 已启用时，扩展在 `session_start` 自动启用管理工具 `subagent_task`。后台子进程仅增加 `subagent_report`，不注册本扩展的派发和管理工具。
 

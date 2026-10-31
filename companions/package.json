@@ -1,0 +1,26 @@
+{
+  "name": "pi-simplify-companions",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Personal question and handoff extensions",
+  "keywords": [
+    "pi-package"
+  ],
+  "pi": {
+    "extensions": [
+      "./question.ts",
+      "./handoff.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-agent-core": "*",
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  }
+}

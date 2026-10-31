@@ -24,6 +24,8 @@
 
 ## 安装与测试
 
+换机器时完整安装 Simplify、Subagent、question、handoff 及配套依赖，见 [跨机器安装说明](docs/install.md)。以下命令只安装 Simplify 界面与主题：
+
 ```bash
 pi install git:github.com/6spot/pi-simplify-extensions
 # 安装或更新后
