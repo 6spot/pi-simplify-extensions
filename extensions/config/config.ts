@@ -31,6 +31,7 @@ export type Config = ToolDisplayConfig & {
 	toolLabelClip: number;
 	useSummaryTitlesAsThinkingTitle: boolean;
 	previewLines: number;
+	completedPreviewLines: number | null;
 	animationIntervalMs: number;
 };
 
@@ -41,12 +42,13 @@ export const DEFAULT_CONFIG: Config = {
 	toolLabelClip: 0,
 	useSummaryTitlesAsThinkingTitle: true,
 	previewLines: 3,
+	completedPreviewLines: 1,
 	animationIntervalMs: 90,
 };
 
 type LocalSettings = {
 	diff?: { view?: DiffViewMode; collapsedEditLines?: number };
-	thinking?: { previewLines?: number };
+	thinking?: { previewLines?: number; completedPreviewLines?: number | null };
 };
 
 function loadLocalSettings(): LocalSettings {
@@ -65,6 +67,7 @@ const displayModes: readonly DiffViewMode[] = ["auto", "split", "unified"];
 const view = settings.diff?.view;
 const editLines = settings.diff?.collapsedEditLines;
 const thinkingLines = settings.thinking?.previewLines;
+const completedThinkingLines = settings.thinking?.completedPreviewLines;
 export const config: Config = {
 	...DEFAULT_CONFIG,
 	diffViewMode: view && displayModes.includes(view) ? view : DEFAULT_CONFIG.diffViewMode,
@@ -76,12 +79,20 @@ export const config: Config = {
 		typeof thinkingLines === "number" && Number.isInteger(thinkingLines) && thinkingLines >= 0
 			? Math.min(thinkingLines, 15)
 			: DEFAULT_CONFIG.previewLines,
+	completedPreviewLines:
+		completedThinkingLines === null
+			? null
+			: typeof completedThinkingLines === "number" &&
+				Number.isInteger(completedThinkingLines) && completedThinkingLines >= 0
+				? Math.min(completedThinkingLines, 15)
+				: DEFAULT_CONFIG.completedPreviewLines,
 };
 
 export function getCompactThinkingConfig(source: Config = config): CompactThinkingConfig {
 	return {
 		useSummaryTitlesAsThinkingTitle: source.useSummaryTitlesAsThinkingTitle,
 		previewLines: source.previewLines,
+		completedPreviewLines: source.completedPreviewLines,
 		animationIntervalMs: source.animationIntervalMs,
 	};
 }

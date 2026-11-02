@@ -1,6 +1,6 @@
 /**
- * One-line, icon-free personal status bar.
- * No status chip registry, external quota polling, configuration panel or extra rows.
+ * One-line, icon-free personal status bar with one blank row below it.
+ * No status chip registry, external quota polling or configuration panel.
  */
 import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
@@ -126,7 +126,10 @@ const createFooter =
 					if (message.role === "assistant") cost += message.usage?.cost?.total || 0;
 					else if (message.role === "toolResult" && message.usage)
 						cost += message.usage.cost?.total || 0;
-				} else if ((entry.type === "branch_summary" || entry.type === "compaction") && entry.usage)
+				} else if (
+					(entry.type === "usage" || entry.type === "branch_summary" || entry.type === "compaction") &&
+					entry.usage
+				)
 					cost += entry.usage.cost?.total || 0;
 			}
 			statsMemo = { usage: ctx.getContextUsage(), cost };
@@ -152,7 +155,7 @@ const createFooter =
 					branch: footerData.getGitBranch(),
 					gitOperation: operations.label,
 				}, width - margin * 2, theme);
-				return [" ".repeat(margin) + line + " ".repeat(margin)];
+				return [" ".repeat(margin) + line + " ".repeat(margin), ""];
 			},
 			invalidate(): void { tui.requestRender(); },
 			dispose: lifecycle.dispose,

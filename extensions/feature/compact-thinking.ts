@@ -41,6 +41,8 @@ type AssistantMessageComponentLike = InstanceType<typeof AssistantMessageCompone
 export type CompactThinkingConfig = {
 	useSummaryTitlesAsThinkingTitle: boolean;
 	previewLines: number;
+	/** null follows the active preview budget. */
+	completedPreviewLines: number | null;
 	animationIntervalMs: number;
 };
 
@@ -112,6 +114,7 @@ type PatchedPrototype = typeof AssistantMessageComponent.prototype & {
 const config: CompactThinkingConfig = {
 	useSummaryTitlesAsThinkingTitle: true,
 	previewLines: 3,
+	completedPreviewLines: 1,
 	animationIntervalMs: 90,
 };
 
@@ -273,11 +276,12 @@ function layoutThinkingPreview(
 	text: string,
 	width: number,
 	padding: number,
+	previewLines: number,
 ): { visible: string[]; hiddenLines: number } {
-	if (!text || config.previewLines <= 0) return { visible: [], hiddenLines: 0 };
+	if (!text || previewLines <= 0) return { visible: [], hiddenLines: 0 };
 	const contentWidth = Math.max(1, width - padding * 2);
 	const budget = Math.max(
-		width * (config.previewLines + PREVIEW_BUDGET_SLACK_LINES),
+		width * (previewLines + PREVIEW_BUDGET_SLACK_LINES),
 		PREVIEW_BUDGET_MIN_CHARS,
 	);
 	let source = text;
@@ -298,8 +302,8 @@ function layoutThinkingPreview(
 		};
 		cachePreview(cacheKey, entry);
 	}
-	const hiddenLines = entry.hiddenBefore + Math.max(0, entry.lines.length - config.previewLines);
-	const visible = hiddenLines > 0 ? entry.lines.slice(-config.previewLines) : entry.lines;
+	const hiddenLines = entry.hiddenBefore + Math.max(0, entry.lines.length - previewLines);
+	const visible = hiddenLines > 0 ? entry.lines.slice(-previewLines) : entry.lines;
 	return { visible, hiddenLines };
 }
 
@@ -335,6 +339,7 @@ export class ThinkingPreviewBlock implements Component {
 	private style: (text: string) => string;
 	private theme: Theme | undefined;
 	private hintHovered = false;
+	private active: boolean;
 	private collapsedMemo:
 		| {
 				width: number;
@@ -353,6 +358,7 @@ export class ThinkingPreviewBlock implements Component {
 		style: (text: string) => string,
 		theme?: Theme,
 		runStartIndex = 0,
+		active = false,
 	) {
 		this.heading = heading;
 		this.text = text;
@@ -361,6 +367,11 @@ export class ThinkingPreviewBlock implements Component {
 		this.runStartIndex = runStartIndex;
 		this.style = style;
 		this.theme = theme;
+		this.active = active;
+	}
+
+	private effectivePreviewLines(): number {
+		return this.active ? config.previewLines : (config.completedPreviewLines ?? config.previewLines);
 	}
 
 	private paint(color: string, text: string): string {
@@ -393,7 +404,7 @@ export class ThinkingPreviewBlock implements Component {
 	private headingLines(width: number, hiddenLines: number, padding: number): string[] {
 		const hint = this.expanded
 			? undefined
-			: hiddenPreviewHint(hiddenLines, Boolean(this.text) && config.previewLines <= 0);
+			: hiddenPreviewHint(hiddenLines, Boolean(this.text) && this.effectivePreviewLines() <= 0);
 		if (!hint) return new Text(this.heading, padding, 0).render(width);
 		const rawHint = hint.prefix + hint.action + hint.suffix;
 		const contentWidth = Math.max(1, width - padding * 2);
@@ -411,7 +422,7 @@ export class ThinkingPreviewBlock implements Component {
 	}
 
 	private bodyLines(width: number, padding: number): { lines: string[]; hiddenLines: number } {
-		if (!this.text || (config.previewLines <= 0 && !this.expanded)) {
+		if (!this.text || (this.effectivePreviewLines() <= 0 && !this.expanded)) {
 			return { lines: [], hiddenLines: 0 };
 		}
 		if (this.expanded) {
@@ -420,7 +431,7 @@ export class ThinkingPreviewBlock implements Component {
 				hiddenLines: 0,
 			};
 		}
-		const preview = layoutThinkingPreview(this.text, width, padding);
+		const preview = layoutThinkingPreview(this.text, width, padding, this.effectivePreviewLines());
 		return { lines: preview.visible, hiddenLines: preview.hiddenLines };
 	}
 
@@ -447,7 +458,7 @@ export class ThinkingPreviewBlock implements Component {
 		const expandAction = thinkingExpandAction();
 		if (
 			this.collapsedMemo?.width === width &&
-			this.collapsedMemo.previewLines === config.previewLines &&
+			this.collapsedMemo.previewLines === this.effectivePreviewLines() &&
 			this.collapsedMemo.hintHovered === this.hintHovered &&
 			this.collapsedMemo.expandAction === expandAction
 		) {
@@ -464,7 +475,7 @@ export class ThinkingPreviewBlock implements Component {
 			: heading;
 		this.collapsedMemo = {
 			width,
-			previewLines: config.previewLines,
+			previewLines: this.effectivePreviewLines(),
 			hintHovered: this.hintHovered,
 			expandAction,
 			lines,
@@ -715,6 +726,7 @@ function compactThinking(pi: ExtensionAPI) {
 			}
 			const runEndIndex = i - 1;
 			i--;
+			// Snapshot per run so earlier runs in the same message stay completed.
 			const active = isActiveRun(message, runStartIndex, runEndIndex);
 			// OpenAI can spend several seconds reasoning before it emits the first
 			// summary token. Keep an empty active block visible as animated
@@ -759,6 +771,7 @@ function compactThinking(pi: ExtensionAPI) {
 					thinkingStyle,
 					activeTheme,
 					runStartIndex,
+					active,
 				),
 			);
 

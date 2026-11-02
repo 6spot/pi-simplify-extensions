@@ -75,6 +75,21 @@ function fixture(t: TestContext) {
 	};
 }
 
+test("Footer includes standalone usage costs while preserving the streaming cache", (t) => {
+	const f = fixture(t);
+	f.state.entries.push(
+		{ type: "usage", kind: "cache_warm", usage: { cost: { total: 0.5 } } },
+		{ type: "usage", kind: "provider_adjustment", usage: { cost: { total: 0.25 } } },
+		{ type: "usage", kind: "cache_warm", usage: {} },
+	);
+	assert.match(f.render(), /\$5\.00/);
+	f.state.entries.push({ type: "usage", kind: "cache_warm", usage: { cost: { total: 0.5 } } });
+	assert.match(f.render(), /\$5\.00/, "repaints continue to reuse the memoized cost");
+	f.state.now = 1000;
+	assert.match(f.render(), /\$5\.50/, "standalone usage refreshes at the existing TTL");
+	assert.equal(f.calls.entries, 2);
+});
+
 test("Footer reuses expensive statistics during repaints and refreshes streaming costs at the one-second boundary", (t) => {
 	const f = fixture(t);
 	assert.match(f.render(), /10%\/100k \| \$4\.25/);
@@ -137,7 +152,7 @@ test("Footer immediately refreshes on session, branch leaf, model and thinking c
 		assert.equal(f.calls.entries, index + 2);
 		assert.equal(f.calls.usage, index + 2);
 	}
-	assert.match(f.render(), /high · model-b {1}$/, "model stays flush against the right margin");
+	assert.match(f.render(), /high · model-b {1}\n$/, "model stays flush against the right margin, above the blank bottom row");
 	assert.equal(f.state.now, 0);
 });
 

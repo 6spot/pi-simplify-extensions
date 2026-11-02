@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { initTheme } from "@earendil-works/pi-coding-agent";
+import { createCodeLineHighlighter } from "../extensions/renderer/tool/diff/diff-highlight.ts";
+import { parseDiff, type DiffLineEntry } from "../extensions/renderer/tool/diff/diff-parse.ts";
 import {
 	MAX_HL_CHARS,
 	ShikiHighlightCache,
@@ -8,6 +11,41 @@ import { shouldHighlightCodeBlock } from "../extensions/renderer/tool/diff/diff-
 import { sanitizeToolResultText } from "../extensions/utils/tool-result-sanitize.ts";
 
 const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
+const theme = { fg: (_color: string, text: string) => text };
+initTheme("dark");
+
+test("diff omissions reset syntax state in synchronous and asynchronous highlighting", async () => {
+	const parsed = parseDiff(
+		["  13 /**", "  14  * documentation", "     ...", "  60 const value = 1"].join("\n"),
+	);
+	const codeEntry = parsed.entries.find(
+		(entry): entry is DiffLineEntry => entry.kind === "line" && entry.content === "const value = 1",
+	);
+	assert.ok(codeEntry);
+	const highlight = createCodeLineHighlighter("javascript", theme, parsed.entries);
+	const standalone = createCodeLineHighlighter("javascript", theme, [codeEntry]);
+	const sync = highlight(codeEntry.content, codeEntry);
+	assert.notEqual(sync, codeEntry.content, "the theme must produce real syntax colors");
+	assert.equal(sync, standalone(codeEntry.content, codeEntry));
+	let upgraded = sync;
+	for (let waited = 0; upgraded === sync && waited < 10_000; waited += 10) {
+		await new Promise((resolve) => setTimeout(resolve, 10));
+		upgraded = highlight(codeEntry.content, codeEntry);
+	}
+	assert.notEqual(upgraded, sync, "the asynchronous Shiki upgrade must actually complete");
+	assert.equal(upgraded, standalone(codeEntry.content, codeEntry));
+});
+
+test("diff segments still share the total syntax highlighting budget", () => {
+	const segment = `const text = '${"x".repeat(Math.floor(MAX_HL_CHARS / 2))}'`;
+	const parsed = parseDiff([`  1 ${segment}`, "     ...", `  99 ${segment}`].join("\n"));
+	assert.ok(segment.length < MAX_HL_CHARS);
+	assert.ok(segment.length * 2 > MAX_HL_CHARS);
+	const highlight = createCodeLineHighlighter("javascript", theme, parsed.entries);
+	for (const entry of parsed.entries) {
+		if (entry.kind === "line") assert.equal(highlight(entry.content, entry), entry.content);
+	}
+});
 
 test("Shiki cache deduplicates pending work, caches success, and isolates themes", async () => {
 	let loads = 0;

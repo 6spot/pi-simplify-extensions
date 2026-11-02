@@ -45,11 +45,39 @@ export function createCodeLineHighlighter(
 	invalidate?: () => void,
 ): CodeLineHighlighter {
 	const codeEntries = entries.filter((entry): entry is DiffLineEntry => entry.kind === "line");
+	const allCode = codeEntries
+		.map((entry) => cleanCodeLine(normalizeCodeWhitespace(entry.content)))
+		.join("\n");
+	// Keep the budget on the whole diff, even when omissions split it into small segments.
+	const segmentLanguage = shouldHighlightCodeBlock(allCode) ? language : undefined;
+	const highlightByEntry = new WeakMap<DiffLineEntry, CodeLineHighlighter>();
+	let segment: DiffLineEntry[] = [];
+	const flushSegment = () => {
+		if (segment.length === 0) return;
+		const highlight = createContiguousCodeLineHighlighter(segmentLanguage, theme, segment, invalidate);
+		for (const entry of segment) highlightByEntry.set(entry, highlight);
+		segment = [];
+	};
+	// Omitted source cannot carry lexer state into the next visible segment.
+	for (const entry of entries) {
+		if (entry.kind === "line") segment.push(entry);
+		else flushSegment();
+	}
+	flushSegment();
+	return (line, entry) => highlightByEntry.get(entry)?.(line, entry) ?? "";
+}
+
+function createContiguousCodeLineHighlighter(
+	language: string | undefined,
+	theme: DiffTheme,
+	codeEntries: readonly DiffLineEntry[],
+	invalidate?: () => void,
+): CodeLineHighlighter {
 	const cleanLines = codeEntries.map((entry) =>
 		cleanCodeLine(normalizeCodeWhitespace(entry.content)),
 	);
 	const code = cleanLines.join("\n");
-	const shouldHighlight = !!language && shouldHighlightCodeBlock(code);
+	const shouldHighlight = !!language;
 	const fallbackLines = shouldHighlight
 		? (() => {
 				try {

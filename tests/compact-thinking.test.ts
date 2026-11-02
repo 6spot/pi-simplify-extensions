@@ -16,6 +16,7 @@ import { animateCompactThinkingText } from "../extensions/renderer/thinking-styl
 const config = {
 	useSummaryTitlesAsThinkingTitle: false,
 	previewLines: 0,
+	completedPreviewLines: null,
 	animationIntervalMs: 30,
 };
 
@@ -268,6 +269,52 @@ function themeCtx(sessionManager: any = { getBranch: () => [], getEntries: () =>
 		},
 	};
 }
+
+test("thinking previews shrink at real completion boundaries and keep runs independent", () => {
+	const { emit, pi } = runtime();
+	const ctx = themeCtx();
+	const options = { ...config, previewLines: 3, completedPreviewLines: 1 };
+	const controller = installCompactThinking(pi, options);
+	try {
+		emit("session_start", {}, ctx);
+		const msg = thinkingMessage(Date.now(), false);
+		msg.content = [{ type: "thinking", thinking: "old-0\nold-1\nold-2\nold-3" }];
+		const update = (type: string, contentIndex = 0) =>
+			emit("message_update", { message: msg, assistantMessageEvent: { type, contentIndex } }, ctx);
+		update("thinking_start");
+		const component = new AssistantMessageComponent(msg, true) as any;
+		const body = (prefix: string) => renderText(component).filter((line) => line.startsWith(prefix));
+		assert.deepEqual(body("old-"), ["old-1", "old-2", "old-3"]);
+		update("thinking_end");
+		assert.equal(body("old-").length, 3, "a provider item ending does not end the visible run");
+		update("text_start", 1);
+		assert.deepEqual(body("old-"), ["old-3"], "text transition shrinks the mounted preview");
+
+		msg.content.push({ type: "text", text: "Response" });
+		msg.content.push({ type: "thinking", thinking: "new-0\nnew-1\nnew-2\nnew-3" });
+		update("thinking_start", 2);
+		component.updateContent(msg);
+		assert.deepEqual(body("old-"), ["old-3"], "earlier run stays completed in the same message");
+		assert.equal(body("new-").length, 3);
+		emit("message_end", { message: msg }, ctx);
+		assert.deepEqual(body("new-"), ["new-3"], "message_end shrinks the last mounted preview");
+
+		controller.updateConfig({ ...options, completedPreviewLines: 0 });
+		assert.equal(body("old-").length + body("new-").length, 0);
+		assert.ok(renderText(component).some((line) => line.includes("click to show more")));
+		const block = thinkingBlockOf(component);
+		block.setExpanded(true);
+		assert.deepEqual(body("old-"), ["old-0", "old-1", "old-2", "old-3"]);
+		block.setExpanded(false);
+		controller.updateConfig({ ...options, completedPreviewLines: null });
+		assert.equal(body("old-").length, 3, "null follows the active budget and invalidates memoized output");
+		assert.equal(body("new-").length, 3);
+	} finally {
+		emit("session_shutdown", {}, ctx);
+		controller.updateConfig(config);
+		clearThinkingPreviewCache();
+	}
+});
 
 test("session tree restores durations from all entries so old messages keep Thought for", async () => {
 	const dir = mkdtempSync(join(tmpdir(), "pi-compact-thinking-restore-"));
@@ -630,6 +677,7 @@ test("thinking preview counts wrapped hidden lines and does not restyle from cac
 		installCompactThinking(pi, {
 			useSummaryTitlesAsThinkingTitle: false,
 			previewLines,
+			completedPreviewLines: null,
 			animationIntervalMs: 30,
 		});
 		emit("session_start", {}, ctx);
@@ -704,6 +752,7 @@ test("previewLines 0 still offers click to show more and expands the body", () =
 		installCompactThinking(pi, {
 			useSummaryTitlesAsThinkingTitle: false,
 			previewLines: 0,
+			completedPreviewLines: null,
 			animationIntervalMs: 30,
 		});
 		emit("session_start", {}, ctx);
@@ -758,6 +807,7 @@ test("thinking preview expands the full body and keeps that state across updateC
 		installCompactThinking(pi, {
 			useSummaryTitlesAsThinkingTitle: false,
 			previewLines,
+			completedPreviewLines: null,
 			animationIntervalMs: 30,
 		});
 		emit("session_start", {}, ctx);
