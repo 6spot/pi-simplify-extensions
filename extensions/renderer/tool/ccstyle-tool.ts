@@ -490,6 +490,11 @@ export function createCcstyleTool(
 			});
 			const displayError = isError && visualState !== "cancelled";
 			setToolVisualState(context, visualState);
+			// 运行中展开：输出还没到，空正文不能画成已经跑完的空结果。
+			const expandedBody = (body: string) => {
+				if (!options?.isPartial || body.trim()) return body;
+				return context?.executionStarted ? "Waiting for output…" : "Receiving arguments…";
+			};
 			if (generic && expanded && typeof originalTool.renderResult === "function") {
 				try {
 					const originalView = originalTool.renderResult(result, options, theme, context);
@@ -519,7 +524,7 @@ export function createCcstyleTool(
 			if (!generic && toolName === CODEMODE_TOOL_NAME) {
 				if (expanded) {
 					return renderExpandedToolResult(
-						codemodeExpandedBody(result),
+						expandedBody(codemodeExpandedBody(result)),
 						theme,
 						displayError,
 						context?.lastComponent,
@@ -575,7 +580,7 @@ export function createCcstyleTool(
 			if (!generic && FILE_PANEL_TOOL_NAMES.has(toolName)) {
 				if (expanded)
 					return renderExpandedToolResult(
-						fileToolText(result, true),
+						expandedBody(fileToolText(result, true)),
 						theme,
 						displayError,
 						context?.lastComponent,
@@ -599,7 +604,7 @@ export function createCcstyleTool(
 				}
 				if (expanded)
 					return renderExpandedToolResult(
-						bashOutputText(result),
+						expandedBody(bashOutputText(result)),
 						theme,
 						displayError,
 						context?.lastComponent,
@@ -663,7 +668,7 @@ export function createCcstyleTool(
 			}
 			if (expanded) {
 				const view = renderExpandedToolResult(
-					text || "",
+					expandedBody(text || ""),
 					theme,
 					displayError,
 					context?.lastComponent,

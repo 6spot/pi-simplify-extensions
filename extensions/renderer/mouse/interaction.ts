@@ -48,6 +48,7 @@ import {
 	disableOfficialScrollToEnd,
 	fullscreenLazyTui,
 	hideScrollButton,
+	isFullscreenAtBottom,
 	restoreOfficialScrollToEnd,
 	renderScrollButton,
 	resetScrollButtonState,
@@ -533,8 +534,7 @@ function handleFullscreenToolClick(tui: any, packet: SgrMousePacket): boolean {
 				other.invalidate?.();
 			}
 		}
-		// 展开 round 卡内工具时，让 compact 的强制折叠放行它（非 round 内工具为空操作）。
-		keepViewportOnExpand(tui);
+		keepViewportOnExpand(tui, hit);
 		component.setExpanded(true);
 		clearPendingCollapsePress();
 	} else {
@@ -585,13 +585,38 @@ function handleFullscreenToolClick(tui: any, packet: SgrMousePacket): boolean {
 }
 
 /**
- * 原地展开时停在当前滚动位置：transcript 跟随底部时，内容变高会把视口拖到底，
- * 点击的行和它上方的外层面板被顶出屏幕。展开前关掉跟随，点击行留在原位。
- * compact 摘要行同样适用：它的展开入口在 setExpanded 之后调用本函数（见调用点）。
+ * 点击行在滚动视口里的位置：视口内行号与视口高度。布局树读不到时返回 null。
+ * leaf 不带 scrollView，视口是最近的带 scrollView 的祖先 box。
  */
-function keepViewportOnExpand(tui: any): void {
+function clickedRowInViewport(
+	hit: { box: any; localRow: number } | null | undefined,
+): { y: number; height: number } | null {
+	if (!hit?.box) return null;
+	let scrollBox: any = null;
+	for (let current = hit.box; current; current = current.parent) {
+		if (current.scrollView) {
+			scrollBox = current;
+			break;
+		}
+	}
+	const rect = scrollBox?.rect;
+	const height = Number(rect?.height);
+	const rowY = Number(hit.box.rect?.y);
+	if (!rect || !(height > 0) || !Number.isFinite(rowY)) return null;
+	return { y: rowY + hit.localRow - Number(rect.y), height };
+}
+
+/**
+ * 原地展开时视口怎么走。transcript 跟随底部时，内容变高会把视口拖到底，
+ * 点击的行和它上方的外层面板被顶出屏幕：展开前关掉跟随，点击行留在原位。
+ * 例外是点击行已经落在视口下半屏：它下面没有足够空间，冻结只会把展开出来的
+ * 内容全推到屏幕外（贴着底部输入框时最常见）。这种位置保持跟随，让新内容顶上来。
+ */
+export function keepViewportOnExpand(tui: any, hit?: { box: any; localRow: number } | null): void {
 	const view = tui.getPrimaryScrollView?.();
 	if (typeof view?.scrollTo !== "function" || typeof view.scrollTop !== "number") return;
+	const spot = clickedRowInViewport(hit);
+	if (spot && isFullscreenAtBottom(tui) && spot.y >= spot.height / 2) return;
 	view.scrollTo(view.scrollTop, { disableFollow: true });
 	// 已脱离底部跟随：dock 模式亮出回到底部按钮，新输出到来时仍有入口。
 	if (view.isFollowingEnd === false) setScrollButtonVisible(true);

@@ -196,6 +196,27 @@ test("expanded Bash retains long available output, native truncation notes, comm
 	}
 });
 
+test("a running expanded tool waits for output instead of reporting an empty result", () => {
+	const cleanup = install();
+	try {
+		const tool = nativeTool("silent", { command: "sleep 5" });
+		tool.markExecutionStarted();
+		tool.updateResult(output(""), true);
+		tool.setExpanded(true);
+		const running = render(tool);
+		assert.match(running, /Input/);
+		assert.match(running, /Waiting for output…/);
+		assert.doesNotMatch(running, /No output/);
+		// 完成后的空结果仍如实显示为空，不被运行中文案顶替。
+		tool.updateResult(output(""));
+		const done = render(tool);
+		assert.match(done, /No output/);
+		assert.doesNotMatch(done, /Waiting for output…/);
+	} finally {
+		cleanup();
+	}
+});
+
 test("Bash grouped summaries stay on one row, tick while running, and retain complete output on expansion", () => {
 	const cleanup = install();
 	const grouping = installToolGrouping(() => true);

@@ -19,6 +19,11 @@ import { WriteExecutionMetadataStore } from "../extensions/renderer/tool/diff/wr
 import { formatToolInputBody } from "../extensions/renderer/tool/tool-io.ts";
 import { titleControlComponent } from "../extensions/renderer/tool/card-header.ts";
 import { insetComponent } from "../extensions/renderer/tool/result.ts";
+import { keepViewportOnExpand } from "../extensions/renderer/mouse/interaction.ts";
+import {
+	getScrollButtonVisible,
+	resetScrollButtonState,
+} from "../extensions/renderer/mouse/scroll.ts";
 
 initTheme("dark");
 
@@ -1078,5 +1083,55 @@ test("expanded group identical show-more labels open their own content", () => {
 	} finally {
 		installToolMouseInteraction({});
 		grouping.shutdown();
+	}
+});
+
+test("expanding a card in the viewport's lower half keeps the transcript following", () => {
+	const scroll: any = {
+		scrollTop: 40,
+		isFollowingEnd: true,
+		lastScroll: null as { row: number; options: any } | null,
+		scrollTo(row: number, options?: any) {
+			scroll.lastScroll = { row, options };
+		},
+	};
+	// 视口 20 行，内容盒从视口顶部铺 60 行；localRow 就是视口内行号。
+	const scrollBox: any = {
+		rect: { x: 0, y: 0, width: 80, height: 20 },
+		scrollView: scroll,
+	};
+	const contentBox: any = {
+		parent: scrollBox,
+		rect: { x: 0, y: 0, width: 80, height: 60 },
+	};
+	const tui: any = {
+		isFollowingOutput: true,
+		getPrimaryScrollView: () => scroll,
+	};
+	try {
+		// 下半屏：点击行下面没有空间，冻结会把展开内容全推到屏幕外。
+		keepViewportOnExpand(tui, { box: contentBox, localRow: 16 });
+		assert.equal(scroll.lastScroll, null, "贴底展开下半屏的卡保持跟随");
+
+		// 上半屏：点击行留在原处，避免跟随把点击行和外层面板顶出屏幕。
+		keepViewportOnExpand(tui, { box: contentBox, localRow: 3 });
+		assert.deepEqual(scroll.lastScroll, { row: 40, options: { disableFollow: true } });
+
+		// 已经脱离底部：没有「新内容顶上来」可跟，继续原地冻结并亮出回到底部入口。
+		scroll.lastScroll = null;
+		scroll.isFollowingEnd = false;
+		tui.isFollowingOutput = false;
+		keepViewportOnExpand(tui, { box: contentBox, localRow: 16 });
+		assert.deepEqual(scroll.lastScroll, { row: 40, options: { disableFollow: true } });
+		assert.equal(getScrollButtonVisible(), true);
+
+		// 布局树读不到：维持原行为。
+		scroll.lastScroll = null;
+		scroll.isFollowingEnd = true;
+		tui.isFollowingOutput = true;
+		keepViewportOnExpand(tui, null);
+		assert.deepEqual(scroll.lastScroll, { row: 40, options: { disableFollow: true } });
+	} finally {
+		resetScrollButtonState();
 	}
 });
