@@ -81,4 +81,10 @@ title: 移植上游贴底展开不冻结视口，并修正运行中展开的空 
 - 结果: 正常交付；完成验证 self（无独立检查）
 - 归档目标: .knit/tasks/archive/2026-11/11-06-port-upstream-expand-viewport
 
+### 任务资料提交记录
+
+<!-- knit:metadata-commit:op-c210d9a9edb4 -->
+- 任务资料提交: eef69f3efc34a421ca416f6fa06e52e57fd157de
+- 归档目标: .knit/tasks/archive/2026-11/11-06-port-upstream-expand-viewport
+
 <!-- knit:progress:end -->
