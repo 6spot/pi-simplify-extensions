@@ -737,3 +737,43 @@ test("组头统一身份与数量；组内 shell 行保留命令和实际耗时"
 		hooks.shutdown();
 	}
 });
+
+test("多工具展开：子卡首行只剩状态图标时不多出一条空行", () => {
+	const hooks = installToolGrouping(() => true);
+	try {
+		const parent = new Container() as any;
+		const first = started("bash", "dup-icon-a", { command: "head -c 400 junit.xml" });
+		const second = started("bash", "dup-icon-b", { command: "node --version" });
+		for (const tool of [first, second]) {
+			tool.updateResult({ content: [{ type: "text", text: "out" }], isError: false });
+		}
+		parent.addChild(first);
+		parent.addChild(second);
+		parent.render(100);
+		const group = parent.children[0] as ToolGroupComponent;
+		group.setExpanded(true);
+		group.render(100);
+
+		// 复现现场：子卡首个可见行剥掉图标后什么都不剩，标题落到下一行。
+		first.render = (() => [
+			"",
+			" ✓ ",
+			" ✓ Bash head -c 400 junit.xml",
+			" └ Output",
+			"   out",
+		]) as any;
+
+		const rendered = group
+			.render(100)
+			.map((line: string) => line.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, ""))
+			.filter((line: string) => line.trim());
+		assert.deepEqual(
+			rendered.filter((line: string) => /^\s*[├└│]?\s*✓\s*$/.test(line)),
+			[],
+			`不该有只有图标的空行: ${rendered.join(" | ")}`,
+		);
+		assert.equal(rendered[1]!.trimEnd(), " ├ ✓ Bash head -c 400 junit.xml", rendered.join(" | "));
+	} finally {
+		hooks.shutdown();
+	}
+});

@@ -26,6 +26,7 @@ import { isMcpToolDefinition, mcpToolTitle } from "./mcp-title.ts";
 import { collapseHintText, isToolTuiFullscreen, showMoreHintText } from "./names.ts";
 import { argumentPreview } from "../../utils/argument-preview.ts";
 import {
+	hasVisibleText,
 	imagePlacement,
 	stripAnsi,
 	stripBackgroundAnsi,
@@ -606,10 +607,14 @@ export class ToolGroupComponent extends Container {
 				continue;
 			}
 			const rendered = visibleLines(Array.isArray(childPaints?.[index]) ? childPaints[index] : []);
-			if (rendered.length) {
+			// 首行的状态图标由组前缀给；剥完什么都不剩就丢掉这一行，再对新的首行剥一次，
+			// 否则会多出一条只有 `├ ✓` 的空行，标题带着图标落到下一行。
+			while (rendered.length) {
 				rendered[0] = stripLeadingStatusIcon(rendered[0])
 					.replace(/^ +/, "")
 					.replace(/^((?:\x1b\[[0-?]*[ -/]*[@-~])*) +/, "$1");
+				if (hasVisibleText(rendered[0])) break;
+				rendered.shift();
 			}
 			const childLines = rendered.length ? rendered : [toolSummary(tool).main];
 			for (let lineIndex = 0; lineIndex < childLines.length; lineIndex++) {
