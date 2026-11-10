@@ -1,6 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { StringEnum } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
+import { StringEnum } from "../extensions/utils/string-enum.ts";
 
 /** Loaded only into a background child; appendEntry is emitted as official entry_appended RPC. */
 export default function subagentReports(pi: ExtensionAPI) {
