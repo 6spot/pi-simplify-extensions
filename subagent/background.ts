@@ -1,7 +1,7 @@
 import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
-import { StringEnum } from "@earendil-works/pi-ai";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
+import { StringEnum } from "../extensions/utils/string-enum.ts";
 import { TaskManager, type TaskEvent, type TaskSnapshot } from "./tasks.ts";
 import { renderTaskNotices } from "./notices.ts";
 

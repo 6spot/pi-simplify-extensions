@@ -18,7 +18,6 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { AgentToolResult, ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { Message } from "@earendil-works/pi-ai";
-import { StringEnum } from "@earendil-works/pi-ai";
 import {
 	CONFIG_DIR_NAME,
 	type ExtensionAPI,
@@ -26,6 +25,7 @@ import {
 	withFileMutationQueue,
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { StringEnum } from "../extensions/utils/string-enum.ts";
 import { fileURLToPath } from "node:url";
 import { registerTaskManager } from "./background.ts";
 import { createTaskView, createTaskFallbackView, isTaskCardSnapshot } from "./view.ts";
