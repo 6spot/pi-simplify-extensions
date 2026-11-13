@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { visibleWidth } from "@earendil-works/pi-tui";
 import workingMessageExtension from "../extensions/feature/shell/working-message.ts";
 import { setActiveBackgroundTasks } from "../extensions/utils/background-tasks.ts";
+
+// Deterministic terminal width: the Working row fits itself to the terminal.
+Object.defineProperty(process.stdout, "columns", { configurable: true, value: 80 });
 
 function install() {
 	const events = new Map<string, Function>();
@@ -26,7 +30,6 @@ for (const { toolName, args, activity } of [
 	{ toolName: "write", args: { path: " x01f7\\file.ts " }, activity: "Writing x01f7\\file.ts" },
 	{ toolName: "bash", args: { command: "  printf\t'next'\nexit\x00\x1f\x7f  " }, activity: "Running printf 'next' exit" },
 	{ toolName: "custom\nnext", args: {}, activity: "Running custom next" },
-	{ toolName: "read", args: { path: "x".repeat(80) }, activity: `Reading ${"x".repeat(72)}` },
 ]) {
 	test(`working activity preserves text and cleans controls: ${JSON.stringify(toolName)}`, async () => {
 		const { events, messages, ctx } = install();
@@ -214,6 +217,46 @@ test("working row reports active background tasks", async () => {
 		assert.match(messages.at(-1) ?? "", / · 1 waiting$/);
 	} finally {
 		setActiveBackgroundTasks([]);
+		await events.get("turn_end")?.({}, ctx);
+	}
+});
+
+test("working row truncates a long command instead of wrapping", async () => {
+	const { events, messages, ctx } = install();
+	const command =
+		"cd /Users/me/IdeaProjects/knit && npm test > /tmp/knit-b9ea-npm-test-no-build.log && echo done";
+	try {
+		await events.get("turn_start")?.({}, ctx);
+		await events.get("tool_execution_start")?.(
+			{ toolCallId: "long", toolName: "bash", args: { command } },
+			ctx,
+		);
+		const message = messages.at(-1) ?? "";
+		assert.equal(visibleWidth(message), 76, "fills the row without wrapping");
+		assert.match(message, /^Working · Running cd \/Users\/me\/IdeaProjects\/knit/);
+		assert.ok(message.endsWith("…"), "marker for the hidden command text");
+		await events.get("tool_execution_end")?.({ toolCallId: "long", toolName: "bash" }, ctx);
+	} finally {
+		await events.get("turn_end")?.({}, ctx);
+	}
+});
+
+test("working row truncates the activity but keeps the token and time suffix", async () => {
+	const { events, messages, ctx } = install();
+	try {
+		await events.get("turn_start")?.({}, ctx);
+		await events.get("tool_execution_start")?.(
+			{ toolCallId: "long", toolName: "bash", args: { command: "x".repeat(200) } },
+			ctx,
+		);
+		await events.get("message_update")?.(
+			{ assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "abcd" } },
+			ctx,
+		);
+		const message = messages.at(-1) ?? "";
+		assert.match(message, /… · ↓ \d+ tokens · \d+s$/);
+		assert.ok(visibleWidth(message) <= 76, `one line: ${visibleWidth(message)} columns`);
+	} finally {
 		await events.get("turn_end")?.({}, ctx);
 	}
 });
