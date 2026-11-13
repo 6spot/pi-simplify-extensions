@@ -545,9 +545,21 @@ export function createToolCard(
 					code: context?.args?.code,
 				});
 			}
-			// ask_user_question：折叠态摊成问答树，展开态按问题逐条列出选择。
+			// ask_user_question：折叠态摊成问答树；已回答后展开按问题逐条列出选择，等待时展开看入参与待答状态。
 			if (!generic && toolName === ASK_USER_QUESTION_TOOL_NAME) {
 				if (options?.isPartial) {
+					// Input 仍有预览上限，完整选项可继续点 Open preview；Output 还没有内容。
+					if (expanded)
+						return renderExpandedToolResult(
+							context?.executionStarted ? "Waiting for your answer…" : "Receiving questions…",
+							theme,
+							false,
+							context?.lastComponent,
+							context?.args,
+							context,
+							true,
+						);
+					if (context?.state) context.state.toolIoView = undefined;
 					return createAskUserResultComponent({
 						result,
 						theme,
