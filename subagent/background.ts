@@ -39,7 +39,8 @@ export function registerTaskManager(
 					`${theme.fg("accent", "○")} Background ${theme.fg("toolTitle", task.agent)} ${theme.fg("dim", `${task.status === "blocked" ? "waiting for parent" : "running"} · ${task.id.slice(0, 8)}`)}`,
 			);
 		if (ctx.mode === "tui")
-			ctx.ui.setWidget(widgetKey, (_tui, theme) => new Text(lines(theme).join("\n"), 0, 0), {
+			// Pi adds a spacer above the widget only; keep the editor from touching the last task line.
+			ctx.ui.setWidget(widgetKey, (_tui, theme) => new Text(`${lines(theme).join("\n")}\n`, 0, 0), {
 				placement: "aboveEditor",
 			});
 		else ctx.ui.setWidget(widgetKey, lines(ctx.ui.theme), { placement: "aboveEditor" });
