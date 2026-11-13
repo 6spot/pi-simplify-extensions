@@ -124,7 +124,7 @@ export function renderEditDiffResult(
 	}
 
 	const palette = resolveDiffPalette(theme);
-	// Rich diffs use ccstyle's self shell. Keep the panel transparent so the
+	// Rich diffs use Simplify's self shell. Keep the panel transparent so the
 	// separator cannot leak toolSuccessBg across the entire new column.
 	const containerBgAnsi = undefined;
 	const language = resolveLanguageFromPath(options.filePath);

@@ -1,6 +1,6 @@
 /**
- * ccstyle 工具卡本体：call/result 渲染，不碰原型补丁。
- * default 用它接管 ToolExecutionComponent；compact 展开面板复用同一份 render。
+ * Simplify 工具卡本体：call/result 渲染，不碰原型补丁。
+ * 用它接管 ToolExecutionComponent 的渲染。
  */
 import { Text, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { config, getToolDisplayConfig } from "../../config/config.ts";
@@ -164,7 +164,7 @@ function renderExpandedTaskResult(
 }
 
 /**
- * shell 的耗时文本。Pi 原生 shell 渲染器会在结果底部报一行，ccstyle 的通用折叠行把它盖掉了。
+ * shell 的耗时文本。Pi 原生 shell 渲染器会在结果底部报一行，Simplify 的通用折叠行把它盖掉了。
  *
  * 两条路都要：新 Pi 在渲染上下文里给 `durationMs`（单调，restore 出来的行也带得到），优先用它；
  * 拿不到（旧 Pi、无耗时的结果）再退回自己的时钟——开始时间在 renderCall 记，结束时间在结果定型时定一次。
@@ -176,8 +176,8 @@ function shellDurationText(toolName: string, context: any, isPartial: boolean): 
 	return elapsed === undefined ? "" : formatToolDuration(elapsed);
 }
 
-/** 用 ccstyle call/result 包装任意工具定义。 */
-export function createCcstyleTool(
+/** 用 Simplify call/result 包装任意工具定义。 */
+export function createToolCard(
 	originalTool: any,
 	writeExecutionMetadata: WriteExecutionMetadataStore,
 	toolName: string,
@@ -208,7 +208,7 @@ export function createCcstyleTool(
 		renderCall(args: any, theme: any, context: any) {
 			context = { ...context, lastComponent: undefined };
 			if (!context.expanded && !context.result && context.state)
-				context.state.ccstyleIoView = undefined;
+				context.state.toolIoView = undefined;
 			const expanded = Boolean(context.expanded);
 			const waitingView =
 				expanded && !context.result && (generic || toolName !== "update_plan")
@@ -216,7 +216,7 @@ export function createCcstyleTool(
 							context.executionStarted ? "Waiting for output…" : "Receiving arguments…",
 							theme,
 							false,
-							context.state?.ccstyleIoView,
+							context.state?.toolIoView,
 							args,
 							context,
 							true,
@@ -242,9 +242,9 @@ export function createCcstyleTool(
 				SHELL_TOOL_NAMES.has(toolName) &&
 				context?.executionStarted &&
 				context.state &&
-				context.state.ccstyleShellStartedAt === undefined
+				context.state.shellStartedAt === undefined
 			) {
-				context.state.ccstyleShellStartedAt = Date.now();
+				context.state.shellStartedAt = Date.now();
 			}
 
 			if (!generic && FILE_PANEL_TOOL_NAMES.has(toolName))
@@ -506,7 +506,7 @@ export function createCcstyleTool(
 			if (!generic && toolName === "update_plan" && !isError && !result?.isError) {
 				const plan = planFromResult(result);
 				if (plan) {
-					if (context?.state) context.state.ccstyleIoView = undefined;
+					if (context?.state) context.state.toolIoView = undefined;
 					return createPlanResultComponent({
 						plan,
 						args: context?.args,
@@ -516,7 +516,7 @@ export function createCcstyleTool(
 					});
 				}
 				if (options?.isPartial) {
-					if (context?.state) context.state.ccstyleIoView = undefined;
+					if (context?.state) context.state.toolIoView = undefined;
 					return createPlanPreviewComponent({ args: context?.args, theme, expanded });
 				}
 			}
@@ -534,7 +534,7 @@ export function createCcstyleTool(
 					);
 				}
 				// 折叠态不再复用展开视图，免得 hover/鼠标命中指向已隐藏的组件
-				if (context?.state) context.state.ccstyleIoView = undefined;
+				if (context?.state) context.state.toolIoView = undefined;
 				const toolCallId = context?.toolCallId;
 				return createCodemodeResultComponent({
 					result,
@@ -567,7 +567,7 @@ export function createCcstyleTool(
 						true,
 					);
 				}
-				if (context?.state) context.state.ccstyleIoView = undefined;
+				if (context?.state) context.state.toolIoView = undefined;
 				const toolCallId = context?.toolCallId;
 				return createAskUserResultComponent({
 					result,
@@ -588,7 +588,7 @@ export function createCcstyleTool(
 						context,
 						true,
 					);
-				if (context?.state) context.state.ccstyleIoView = undefined;
+				if (context?.state) context.state.toolIoView = undefined;
 				return createFileToolResultComponent(
 					toolName,
 					context?.args,
@@ -599,8 +599,8 @@ export function createCcstyleTool(
 			}
 			if (!generic && SHELL_TOOL_NAMES.has(toolName)) {
 				if (!options?.isPartial) {
-					if (context?.state && context.state.ccstyleShellEndedAt === undefined)
-						context.state.ccstyleShellEndedAt = Date.now();
+					if (context?.state && context.state.shellEndedAt === undefined)
+						context.state.shellEndedAt = Date.now();
 				}
 				if (expanded)
 					return renderExpandedToolResult(
@@ -612,7 +612,7 @@ export function createCcstyleTool(
 						context,
 						true,
 					);
-				if (context?.state) context.state.ccstyleIoView = undefined;
+				if (context?.state) context.state.toolIoView = undefined;
 				return createBashResultComponent({
 					toolName,
 					args: context?.args,
@@ -678,7 +678,7 @@ export function createCcstyleTool(
 				);
 				return view;
 			}
-			if (context?.state) context.state.ccstyleIoView = undefined;
+			if (context?.state) context.state.toolIoView = undefined;
 			const output =
 				text ||
 				(result?.content?.some((item: any) => item.type === "image")

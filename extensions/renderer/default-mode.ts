@@ -2,7 +2,7 @@
  * 固定 on 模式：Claude Code 风格工具卡渲染。
  *
  * 经 ToolExecutionComponent 原型补丁接管 call/result。
- * 卡片怎么画在 tool/ccstyle-tool.ts，本文件只负责安装与所有权。
+ * 卡片怎么画在 tool/tool-card.ts，本文件只负责安装与所有权。
  * 生命周期：installDefaultMode → hooks.shutdown。
  */
 import { ToolExecutionComponent } from "@earendil-works/pi-coding-agent";
@@ -19,11 +19,11 @@ import { isMcpToolDefinition } from "./tool/mcp-title.ts";
 import { ownsPrivateToolShell } from "./tool/card-family.ts";
 import { ToolGroupComponent } from "./tool/grouping.ts";
 import { getMessageDisplayTheme } from "./tool/message-display.ts";
-import { createCcstyleTool } from "./tool/ccstyle-tool.ts";
+import { createToolCard } from "./tool/tool-card.ts";
 import type { WriteExecutionMetadataStore } from "./tool/diff/index.ts";
-export { shouldRenderRichDiff } from "./tool/ccstyle-tool.ts";
+export { shouldRenderRichDiff } from "./tool/tool-card.ts";
 
-// pi-subagents 等扩展为 Agent 提供专用渲染器，ccstyle 必须保留。
+// pi-subagents 等扩展为 Agent 提供专用渲染器，Simplify 必须保留。
 const DEDICATED_RENDERER_TOOLS = new Set(["Agent", "subagent", "subagent_task"]);
 
 export type DefaultModeHooks = {
@@ -128,9 +128,9 @@ function shouldGloballyStyleTool(component: any): boolean {
 		!isMcpToolDefinition(definition, toolName) &&
 		(typeof definition?.renderCall === "function" ||
 			typeof definition?.renderResult === "function");
-	const useCcstyle = !dedicated && !ownsPrivateToolShell(toolName, definition);
-	component[COMPONENT_TOOL_RENDER_MODE] = useCcstyle;
-	return useCcstyle;
+	const useToolCard = !dedicated && !ownsPrivateToolShell(toolName, definition);
+	component[COMPONENT_TOOL_RENDER_MODE] = useToolCard;
+	return useToolCard;
 }
 
 function getGloballyStyledTool(component: any, patch: GlobalToolRenderPatch): any {
@@ -278,7 +278,7 @@ function installGlobalToolRendering(
 		prototype,
 		active: true,
 		wrap: (tool: any, toolName: string) =>
-			createCcstyleTool(tool, writeExecutionMetadata, toolName),
+			createToolCard(tool, writeExecutionMetadata, toolName),
 		byDefinition: new WeakMap(),
 		byName: new Map(),
 		downstream,
@@ -296,8 +296,8 @@ function installGlobalToolRendering(
 		},
 		getRenderShell: function (this: any, ...args: any[]) {
 			if (!patch.active) return patch.downstream.getRenderShell.apply(this, args);
-			const useCcstyle = shouldGloballyStyleTool(this);
-			const shell = useCcstyle
+			const useToolCard = shouldGloballyStyleTool(this);
+			const shell = useToolCard
 				? this.expanded || ["update_plan", "bash", "grep", "find", "read"].includes(this.toolName)
 					? "default"
 					: "self"

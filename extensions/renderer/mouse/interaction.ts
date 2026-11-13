@@ -104,10 +104,10 @@ type InteractionRegion = {
 
 type InteractionFrame = { regions: InteractionRegion[] };
 
-const TOOL_MOUSE_WIDGET_KEY = "ccstyle-tool-mouse";
+const TOOL_MOUSE_WIDGET_KEY = "simplify-tool-mouse";
 const TOOL_MOUSE_MOTION_ENABLE = "\x1b[?1003h\x1b[?1006h";
 const TOOL_MOUSE_MOTION_DISABLE = "\x1b[?1003l";
-const FULLSCREEN_MOTION_ENABLED = Symbol("ccstyle.fullscreen-motion-enabled");
+const FULLSCREEN_MOTION_ENABLED = Symbol("simplify.fullscreen-motion-enabled");
 const DEFAULT_TOOL_MOUSE_OWNER = {};
 export const TOOL_MOUSE_DISABLE = "\x1b[?1006l\x1b[?1003l\x1b[?1000l";
 
@@ -124,7 +124,7 @@ let ownsFullscreenMotion = false;
 let sessionRenderTimer: ReturnType<typeof setTimeout> | null = null;
 let latestInteractionFrame: InteractionFrame = { regions: [] };
 
-/** Summary markers used by Pi and ccstyle; unlike the trailing hint, these survive truncation. */
+/** Summary markers used by Pi and Simplify; unlike the trailing hint, these survive truncation. */
 const COLLAPSED_TOOL_SUMMARY = /^\s*(?:↳|└|⎿|●|○|✓|✗|…|\.\.\.)/;
 
 function interactionRegionAt(packet: SgrMousePacket): InteractionRegion | null {
@@ -397,7 +397,7 @@ function releaseFullscreenToolMouseMotion(tui?: any): void {
 	}
 }
 
-const FULLSCREEN_VIEWPORT_PATCH = Symbol("ccstyle.fullscreen-viewport-patch");
+const FULLSCREEN_VIEWPORT_PATCH = Symbol("simplify.fullscreen-viewport-patch");
 
 /**
  * diff 结果组件自带 remainder 行：声明存在时只有那一行是展开入口（正文里的同名字样不算）；
@@ -1235,11 +1235,11 @@ export function resetToolHoverState(): void {
 
 /**
  * pi 0.87 起工具卡结果区自带 MouseRegion，整卡左键 click 都会 setExpanded。
- * ccstyle 的多行折叠卡（rich diff）只允许声明的 remainder 行展开，
+ * Simplify 的多行折叠卡（rich diff）只允许声明的 remainder 行展开，
  * 其余位置直接吞掉 click，避免官方把 diff 正文当展开入口。
  * 0.84 及更早没有 handleMouse，安装时跳过。
  */
-const TOOL_CARD_MOUSE_GUARD_KEY = Symbol.for("pi.ccstyle.tool-card-mouse-guard");
+const TOOL_CARD_MOUSE_GUARD_KEY = Symbol.for("pi.simplify.tool-card-mouse-guard");
 
 type ToolCardMouseGuard = {
 	prototype: any;

@@ -9,7 +9,7 @@ import {
 } from "../extensions/renderer/default-mode.ts";
 import { setMessageDisplayTheme } from "../extensions/renderer/tool/message-display.ts";
 import { WriteExecutionMetadataStore } from "../extensions/renderer/tool/diff/index.ts";
-import { createCcstyleTool } from "../extensions/renderer/tool/ccstyle-tool.ts";
+import { createToolCard } from "../extensions/renderer/tool/tool-card.ts";
 import { toolCardStatus, toolWasCancelled } from "../extensions/renderer/tool/tool-state.ts";
 import { installToolGrouping, ToolGroupComponent } from "../extensions/renderer/tool/grouping.ts";
 import { installToolMouseInteraction } from "../extensions/renderer/mouse/interaction.ts";
@@ -117,7 +117,7 @@ test("generic and MCP previews do not evaluate input getters/toJSON or change ex
 				return output("ok");
 			},
 		};
-		const tool = createCcstyleTool(original, new WriteExecutionMetadataStore(), name);
+		const tool = createToolCard(original, new WriteExecutionMetadataStore(), name);
 		const result = output("first\nsecond\nthird\nfourth\nfifth");
 		const context = { args, result, state: {}, isPartial: false, isError: false, toolCallId: name };
 		const call = paint(tool.renderCall(args, theme, context)).join("\n");
@@ -144,7 +144,7 @@ test("generic expanded delegation preserves a valid plugin view; broken presenta
 				return new Text("PLUGIN_RESULT", 0, 0);
 			},
 		};
-		const tool = createCcstyleTool(original, new WriteExecutionMetadataStore(), original.name);
+		const tool = createToolCard(original, new WriteExecutionMetadataStore(), original.name);
 		const context = { args, result, state: {}, isPartial: false, isError: false };
 		const rows = paint(
 			tool.renderResult(result, { expanded: true, isPartial: false }, theme, context),
@@ -208,7 +208,7 @@ test("cancelled native results stay neutral when folded or expanded, while failu
 	]) {
 		for (const mcp of [false, true]) {
 			const definition = { name, label: mcp ? `MCP: remote_${name}` : name };
-			const tool = createCcstyleTool(definition, new WriteExecutionMetadataStore(), name);
+			const tool = createToolCard(definition, new WriteExecutionMetadataStore(), name);
 			for (const cancelled of [true, false]) {
 				const result = output(cancelled ? "Operation aborted" : "Permission denied", {
 					isError: true,
@@ -233,7 +233,7 @@ test("cancelled native results stay neutral when folded or expanded, while failu
 					const neutral = cancelled && !mcp;
 					const label = `${name} ${mcp ? "MCP" : "native"} ${expanded ? "expanded" : "folded"}`;
 					assert.equal(
-						context.state.ccstyleToolVisualState,
+						context.state.toolVisualState,
 						neutral ? "cancelled" : "error",
 						label,
 					);

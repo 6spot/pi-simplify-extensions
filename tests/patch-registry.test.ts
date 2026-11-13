@@ -30,7 +30,7 @@ test("dispose only deletes when still owned; ensure initializes once", () => {
 });
 
 test("singleton storage is globalThis", () => {
-	const key = Symbol.for("pi.ccstyle.test.patch-registry");
+	const key = Symbol.for("pi.simplify.test.patch-registry");
 	try {
 		patchRegistry.install(key, { tag: "via-registry" });
 		assert.equal(

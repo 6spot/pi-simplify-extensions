@@ -155,8 +155,8 @@ export function settledIcon(name: string, state: ToolVisualState | undefined): s
 
 export function setToolVisualState(context: any, visualState: ToolVisualState) {
 	const state = (context.state ??= {});
-	if (state.ccstyleToolVisualState === visualState) return;
-	state.ccstyleToolVisualState = visualState;
+	if (state.toolVisualState === visualState) return;
+	state.toolVisualState = visualState;
 	// Do not invalidate synchronously from renderResult. Pi is already rendering
 	// this tool row; recursively scheduling another render here can retain both
 	// the finalized result component and its previous secondary/partial component,
@@ -165,7 +165,7 @@ export function setToolVisualState(context: any, visualState: ToolVisualState) {
 }
 
 function getToolVisualState(context: any): ToolVisualState | undefined {
-	return context?.state?.ccstyleToolVisualState as ToolVisualState | undefined;
+	return context?.state?.toolVisualState as ToolVisualState | undefined;
 }
 
 export function resolveToolVisualState(context: any): ToolVisualState | undefined {
@@ -207,6 +207,6 @@ export function toolIconColor(context: any): "accent" | "error" | "success" | "m
 }
 
 export function isToolExpanded(options: any, context: any): boolean {
-	const local = context?.state?.ccstyleToolExpanded;
+	const local = context?.state?.toolExpanded;
 	return typeof local === "boolean" ? local : Boolean(options?.expanded ?? context?.expanded);
 }

@@ -41,7 +41,6 @@ export default function claudeCodeStyle(pi: ExtensionAPI): void {
 		const hooks = ensureInstalled(ctx);
 		if (!hooks) return;
 		installToolMouseInteraction(ctx, mouseOwner);
-		ctx.ui.setStatus("ccstyle", undefined);
 		queueMicrotask(() => {
 			hooks.grouping.refresh(getToolMouseTui());
 			refreshMessageDisplays(getToolMouseTui());

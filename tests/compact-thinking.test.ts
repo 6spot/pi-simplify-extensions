@@ -144,7 +144,7 @@ const headlessCtx = {
 	ui: { theme: {}, setWidget() {}, requestRender() {} },
 };
 
-test("compact thinking patches the runtime component with ccstyle config", () => {
+test("compact thinking patches the runtime component with Simplify config", () => {
 	const dir = mkdtempSync(join(tmpdir(), "pi-compact-thinking-"));
 	const previousDir = process.env.PI_CODING_AGENT_DIR;
 	const { emit, pi } = runtime();
