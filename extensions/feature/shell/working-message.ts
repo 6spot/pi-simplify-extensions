@@ -1,4 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { stripAnsi } from "../../utils/ansi-text.ts";
 import { backgroundTaskSummary } from "../../utils/background-tasks.ts";
 import { formatDuration, formatTokenCount } from "../../utils/format.ts";
 import {
@@ -35,6 +37,8 @@ function briefActivity(name: string, args: any): string {
 }
 /** Elapsed time is only shown once the turn has run this long. */
 const SHOW_TIMER_AFTER_MS = 3_000;
+const WORKING_PREFIX = "Working · ";
+const WORKING_PREFIX_WIDTH = visibleWidth(WORKING_PREFIX);
 
 type StreamMessage = {
 	content?: unknown;
@@ -87,7 +91,17 @@ export default function (pi: ExtensionAPI): void {
 		}
 		const background = backgroundTaskSummary();
 		if (background) parts.push(background);
-		return `Working · ${[activeTools.size ? [...activeTools.values()].at(-1) : activity, ...parts].filter(Boolean).join(" · ")}`;
+		// Pi renders this row through a Loader: 1 column of padding per side plus a 1-column spinner and a space.
+		const suffix = parts.join(" · ");
+		const current = activeTools.size ? [...activeTools.values()].at(-1) : activity;
+		const room = terminalColumns() - 4 - WORKING_PREFIX_WIDTH - (suffix ? 3 : 0) - visibleWidth(suffix);
+		// truncateToWidth closes styles at the cut; the plain activity carries no color of its own.
+		const shown = current ? stripAnsi(truncateToWidth(current, Math.max(0, room), "…")) : "";
+		return `${WORKING_PREFIX}${[shown, suffix].filter(Boolean).join(" · ")}`;
+	}
+
+	function terminalColumns(): number {
+		return process.stdout.columns || Number(process.env.COLUMNS) || 80;
 	}
 
 	function workingUiAvailable(): boolean {
