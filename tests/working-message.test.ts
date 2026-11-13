@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import workingMessageExtension from "../extensions/feature/shell/working-message.ts";
+import { setActiveBackgroundTasks } from "../extensions/utils/background-tasks.ts";
 
 function install() {
 	const events = new Map<string, Function>();
@@ -199,6 +200,22 @@ test("refresh timer stops quietly once the captured ctx goes stale", async (t) =
 	);
 	await events.get("turn_start")?.({}, ctx);
 	await events.get("session_shutdown")?.({}, ctx);
+});
+
+test("working row reports active background tasks", async () => {
+	const { events, messages, ctx } = install();
+	setActiveBackgroundTasks([{ status: "running" }, { status: "running" }, { status: "blocked" }]);
+	try {
+		await events.get("turn_start")?.({}, ctx);
+		assert.match(messages.at(-1) ?? "", / · 2 background · 1 waiting$/);
+
+		setActiveBackgroundTasks([{ status: "blocked" }]);
+		await events.get("tool_execution_end")?.({ toolCallId: "none", toolName: "read" }, ctx);
+		assert.match(messages.at(-1) ?? "", / · 1 waiting$/);
+	} finally {
+		setActiveBackgroundTasks([]);
+		await events.get("turn_end")?.({}, ctx);
+	}
 });
 
 test("shows the current tool and removes it after execution", async () => {

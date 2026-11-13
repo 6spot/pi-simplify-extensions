@@ -1,4 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { backgroundTaskSummary } from "../../utils/background-tasks.ts";
 import { formatDuration, formatTokenCount } from "../../utils/format.ts";
 import {
 	resetTokenRate,
@@ -84,6 +85,8 @@ export default function (pi: ExtensionAPI): void {
 			// formatDuration 低于 1 秒返回 ""，此处回退 "0s" 保持计时器连续跳动。
 			parts.push(formatDuration(elapsed) || "0s");
 		}
+		const background = backgroundTaskSummary();
+		if (background) parts.push(background);
 		return `Working · ${[activeTools.size ? [...activeTools.values()].at(-1) : activity, ...parts].filter(Boolean).join(" · ")}`;
 	}
 

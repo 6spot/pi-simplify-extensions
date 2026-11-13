@@ -4,12 +4,12 @@ import { registerTaskManager } from "../subagent/background.ts";
 import type { RpcOptions, RpcProcess, RpcRecord } from "../subagent/rpc.ts";
 
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
-function fixture() {
+function fixture({ mode = "rpc" }: { mode?: "rpc" | "tui" } = {}) {
 	const handlers = new Map<string, Function[]>();
 	const tools = new Map<string, any>();
 	const renderers = new Map<string, any>();
 	const messages: Array<{ message: any; options: any }> = [];
-	const widgets: Array<string[] | undefined> = [];
+	const widgets: Array<any> = [];
 	const children: Array<{
 		options: RpcOptions;
 		requests: RpcRecord[];
@@ -20,7 +20,7 @@ function fixture() {
 	let session = "one";
 	const ctx = {
 		cwd: process.cwd(),
-		mode: "rpc",
+		mode,
 		hasUI: true,
 		isIdle: () => idle,
 		sessionManager: { getSessionId: () => session },
@@ -183,6 +183,24 @@ test("background status survives the parent's settled turn and follows waiting, 
 		assert.equal(f.messages[1].message.details.events[0].kind, "completed");
 		assert.equal(f.messages[1].options.triggerTurn, true);
 		assert.match(f.messages[1].message.content, /actual result/);
+	} finally {
+		await f.fire("session_shutdown");
+	}
+});
+
+test("an active parent keeps the background line in the Working row and restores the widget when idle", async () => {
+	const f = fixture({ mode: "tui" });
+	try {
+		const task = f.start();
+		await tick();
+		assert.equal(f.widgets.at(-1), undefined, "no separate line while the parent runs");
+		f.setIdle(true);
+		await f.fire("agent_settled");
+		const factory = f.widgets.at(-1);
+		assert.equal(typeof factory, "function");
+		const rows: string[] = factory({}, { fg: (_color: string, value: string) => value }).render(80);
+		assert.match(rows.join("\n"), new RegExp(`Background reader running · ${task.id.slice(0, 8)}`));
+		assert.equal(rows.at(-1)?.trim(), "", "keeps a blank line above the editor");
 	} finally {
 		await f.fire("session_shutdown");
 	}

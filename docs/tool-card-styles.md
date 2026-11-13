@@ -506,7 +506,7 @@ Skill：
 
 `Loaded` 只表示指令加载；后续 Subagent、Read、Bash 等继续使用实际工具卡。
 
-后台 widget 继续独立于父回合显示：
+父回合结束后，后台 widget 继续独立显示（进行中由 Working 行尾带出数量，如 `· 1 background`）：
 
 ```text
 ○ Background tasks · 1 running · 1 waiting
