@@ -1,5 +1,5 @@
 /**
- * ccstyle 补丁所有权与跨模块协调键的单一来源（single source of truth）。
+ * Simplify 补丁所有权与跨模块协调键的单一来源（single source of truth）。
  *
  * 全部使用 Symbol.for（全局注册表）：/reload 后新模块实例拿到的是同一个 symbol，
  * 这是跨 reload 识别/让渡补丁所有权的关键。切勿把这些 Symbol.for 改成模块局部 Symbol。
@@ -13,44 +13,44 @@
  */
 
 // ── compact-thinking 协调 ──
-export const COMPACT_THINKING_PATCH_KEY = Symbol.for("pi.ccstyle.compact-thinking-update");
-export const PROTOTYPE_ORIGINAL_KEY = Symbol.for("pi.ccstyle.prototype-original");
-export const COMPACT_THINKING_OWNER = Symbol.for("pi.ccstyle.compact-thinking-owner");
+export const COMPACT_THINKING_PATCH_KEY = Symbol.for("pi.simplify.compact-thinking-update");
+export const PROTOTYPE_ORIGINAL_KEY = Symbol.for("pi.simplify.prototype-original");
+export const COMPACT_THINKING_OWNER = Symbol.for("pi.simplify.compact-thinking-owner");
 
 // ── 工具渲染补丁 ──
-export const GLOBAL_TOOL_RENDER_PATCH = Symbol.for("pi.ccstyle.global-tool-render-patch");
-export const COMPONENT_TOOL_RENDER_MODE = Symbol.for("pi.ccstyle.component-tool-render-mode");
+export const GLOBAL_TOOL_RENDER_PATCH = Symbol.for("pi.simplify.global-tool-render-patch");
+export const COMPONENT_TOOL_RENDER_MODE = Symbol.for("pi.simplify.component-tool-render-mode");
 export const TOOL_EXPANDED_BACKGROUND_PATCH = Symbol.for(
-	"pi.ccstyle.tool-expanded-background-patch",
+	"pi.simplify.tool-expanded-background-patch",
 );
 
 // ── 消息组件补丁 ──
 export const MARKDOWN_CODE_BLOCK_PATCH = Symbol.for("pi.simplify.markdown-code-block-patch");
-export const MESSAGE_DISPLAY_PATCH = Symbol.for("pi.ccstyle.message-display-patch");
+export const MESSAGE_DISPLAY_PATCH = Symbol.for("pi.simplify.message-display-patch");
 
 // ── 工具分组 ──
-export const TOOL_GROUPING_PATCH_KEY = Symbol.for("pi.ccstyle.tool-grouping-patch");
-export const TOOL_GROUPING_PARENT_KEY = Symbol.for("pi.ccstyle.tool-grouping-parent");
-export const TOOL_GROUPING_GENERATION_KEY = Symbol.for("pi.ccstyle.tool-grouping-generation");
+export const TOOL_GROUPING_PATCH_KEY = Symbol.for("pi.simplify.tool-grouping-patch");
+export const TOOL_GROUPING_PARENT_KEY = Symbol.for("pi.simplify.tool-grouping-parent");
+export const TOOL_GROUPING_GENERATION_KEY = Symbol.for("pi.simplify.tool-grouping-generation");
 
 // ── regular 主屏渲染补丁 ──
-export const MAIN_SCREEN_DO_RENDER_PATCH = Symbol.for("pi.ccstyle.main-screen-do-render-patch");
+export const MAIN_SCREEN_DO_RENDER_PATCH = Symbol.for("pi.simplify.main-screen-do-render-patch");
 
 // ── fullscreen 粘性用户消息头 ──
-export const STICKY_PROMPT_MARKER_PATCH = Symbol.for("pi.ccstyle.sticky-prompt-marker-patch");
-export const STICKY_PROMPT_FRAME_PATCH = Symbol.for("pi.ccstyle.sticky-prompt-frame-patch");
-export const STICKY_PROMPT_STATE_SLOT = Symbol.for("pi.ccstyle.sticky-prompt-state");
+export const STICKY_PROMPT_MARKER_PATCH = Symbol.for("pi.simplify.sticky-prompt-marker-patch");
+export const STICKY_PROMPT_FRAME_PATCH = Symbol.for("pi.simplify.sticky-prompt-frame-patch");
+export const STICKY_PROMPT_STATE_SLOT = Symbol.for("pi.simplify.sticky-prompt-state");
 
 // ── 鼠标交互 ──
-export const TOOL_MOUSE_OWNER_KEY = Symbol.for("pi.ccstyle.tool-mouse-owner");
-export const TOOL_MOUSE_TUI_SLOT = Symbol.for("pi.ccstyle.tool-mouse-tui");
-export const SCROLL_BUTTON_STATE_SLOT = Symbol.for("pi.ccstyle.scroll-button-state");
-export const OFFICIAL_SCROLL_TO_END_KEY = Symbol.for("pi.ccstyle.official-scroll-to-end");
-export const FLUSH_DOCKED_BASH_PATCH = Symbol.for("pi.ccstyle.flush-docked-bash-patch");
-export const TOOL_HOVER_STATE_KEY = Symbol.for("pi.ccstyle.tool-hover-state");
+export const TOOL_MOUSE_OWNER_KEY = Symbol.for("pi.simplify.tool-mouse-owner");
+export const TOOL_MOUSE_TUI_SLOT = Symbol.for("pi.simplify.tool-mouse-tui");
+export const SCROLL_BUTTON_STATE_SLOT = Symbol.for("pi.simplify.scroll-button-state");
+export const OFFICIAL_SCROLL_TO_END_KEY = Symbol.for("pi.simplify.official-scroll-to-end");
+export const FLUSH_DOCKED_BASH_PATCH = Symbol.for("pi.simplify.flush-docked-bash-patch");
+export const TOOL_HOVER_STATE_KEY = Symbol.for("pi.simplify.tool-hover-state");
 
 // ── rich diff 组件标记 ──
-export const RICH_DIFF_COMPONENT = Symbol.for("pi.ccstyle.rich-diff-component");
+export const RICH_DIFF_COMPONENT = Symbol.for("pi.simplify.rich-diff-component");
 
 // ── PatchRegistry：所有权生命周期统一收口 ──
 

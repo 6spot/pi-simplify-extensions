@@ -50,7 +50,7 @@ function makeBranch(summary = "branch work") {
 	);
 }
 
-test("message-display: ccstyle on 时三个组件渲染为工具调用风格", () => {
+test("message-display: 三个消息组件渲染为工具调用风格", () => {
 	const dispose = installMessageDisplayRendering();
 	setMessageDisplayTheme(fakeTheme());
 

@@ -64,7 +64,7 @@ Bash 的退出码和耗时只显示实际返回或记录的数据。Pi 重载或
 
 ## 配置
 
-固定工具渲染模式为 `on`，Footer 固定为单行无图标。不再提供 `/ccstyle` 设置面板，也不读取旧的 `~/.pi/agent/pi-cc-extensions.json`。
+固定工具渲染模式为 `on`，Footer 固定为单行无图标。不再提供上游的风格设置面板，也不读取旧的 `~/.pi/agent/pi-cc-extensions.json`。
 
 仅修改仓库根目录的 `simplify.json`：
 

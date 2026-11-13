@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { stripVTControlCharacters } from "node:util";
 import { test } from "node:test";
 import { initTheme } from "@earendil-works/pi-coding-agent";
-import { createCcstyleTool } from "../extensions/renderer/tool/ccstyle-tool.ts";
+import { createToolCard } from "../extensions/renderer/tool/tool-card.ts";
 import { WriteExecutionMetadataStore } from "../extensions/renderer/tool/diff/index.ts";
 import { setToolTuiFullscreen } from "../extensions/renderer/tool/names.ts";
 import { formatToolInputArgs, hasExpandableDetail } from "../extensions/renderer/tool/tool-io.ts";
@@ -118,7 +118,7 @@ test("generic collapsed cards keep hints for meaningful Input and retain the exp
 		bg: (_color: string, text: string) => text,
 		bold: (text: string) => text,
 	};
-	const tool = createCcstyleTool(
+	const tool = createToolCard(
 		{ name: "vendor_probe" },
 		new WriteExecutionMetadataStore(),
 		"vendor_probe",

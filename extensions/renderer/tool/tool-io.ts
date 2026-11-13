@@ -64,7 +64,7 @@ export type ToolIoSection = "input" | "output";
 
 // Module-local token: /reload creates a fresh token, so stale view instances are
 // replaced instead of retaining their old render implementation.
-const EXPANDED_TOOL_IO_VIEW_GENERATION = Symbol("ccstyle-expanded-tool-io-view");
+const EXPANDED_TOOL_IO_VIEW_GENERATION = Symbol("simplify-expanded-tool-io-view");
 
 /**
  * Expanded tool body with clear Input / Output sections (Grok Build–style).
@@ -435,7 +435,7 @@ export function expandedIoForTool(component: any): ExpandedToolIoView | null {
 	if (isExpandedToolIoView(component?.resultRendererComponent))
 		return component.resultRendererComponent;
 	if (!component?.result) {
-		const view = component?.rendererState?.ccstyleIoView ?? component?.state?.ccstyleIoView;
+		const view = component?.rendererState?.toolIoView ?? component?.state?.toolIoView;
 		if (isExpandedToolIoView(view)) return view;
 	}
 	return null;
@@ -711,7 +711,7 @@ export function renderExpandedToolResult(
 		return view;
 	}
 
-	if (context?.state) context.state.ccstyleIoView = undefined;
+	if (context?.state) context.state.toolIoView = undefined;
 	const color = isError ? "error" : "muted";
 	return new Text(theme.fg(color, renderCollapsedToolResult("Done")), 0, 0);
 }
@@ -758,7 +758,7 @@ function rememberIoView(context: any, view: ExpandedToolIoView): void {
 		ioViewInvalidators.set(view, () => invalidate());
 	}
 	if (!context.state || typeof context.state !== "object") context.state = {};
-	context.state.ccstyleIoView = view;
+	context.state.toolIoView = view;
 }
 
 /** hover 状态变更后刷新上一个/下一个视图（context.invalidate 缓存于 ioViewInvalidators）。 */

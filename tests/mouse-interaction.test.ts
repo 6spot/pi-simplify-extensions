@@ -274,7 +274,7 @@ test("show-more hover targets the view rendered in the current frame after compa
 	const tool = {
 		toolCallId: "tool-after-compact",
 		expanded: true,
-		state: { ccstyleIoView: staleView },
+		state: { toolIoView: staleView },
 		setExpanded(value: boolean) {
 			this.expanded = value;
 		},

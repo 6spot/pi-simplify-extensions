@@ -11,8 +11,8 @@ import { showMoreHintText, collapseHintText, renderToolHeaderToWidth } from "./n
 import { walkComponentTree } from "../../utils/component-tree.ts";
 
 /**
- * 接管三个消息组件（`<skill>` 块、压缩摘要、分支摘要），ccstyle on 时渲染为
- * 与工具调用一致的单行风格（● Title · hint），off 时回退原生。
+ * 接管三个消息组件（`<skill>` 块、压缩摘要、分支摘要），渲染为与工具调用一致的单行风格
+ * （● Title · hint）；主题未就绪时回退原生。
  *
  * 三者结构同构：Box + markdownTheme + updateDisplay，构造/setExpanded/invalidate
  * 三条路径都经过 updateDisplay，patch 一处即可全覆盖。它们不走
@@ -73,12 +73,12 @@ export function isMessageTitleControlLine(component: any, line: string): boolean
 	return header.line !== undefined && stripVTControlCharacters(line).trim() === header.line;
 }
 
-function renderCcstyle(component: any, kind: DisplayKind, owner: { active: boolean }): void {
+function renderAsToolCard(component: any, kind: DisplayKind, owner: { active: boolean }): void {
 	const theme = displayTheme;
 	if (!theme) return; // 主题未就绪时保留原生渲染
 	if (component.bgFn) component.setBgFn?.(undefined); // 与工具调用一致，去掉灰底
 	if (component.paddingY !== 0) {
-		component._ccstyleOriginalPaddingY = component.paddingY;
+		component._simplifyOriginalPaddingY = component.paddingY;
 		component.paddingY = 0; // 工具组件 paddingY=0；原生 Box 默认 1，会上下各留一个空行
 	}
 	component.clear();
@@ -141,16 +141,16 @@ export function installMessageDisplayRendering(): () => void {
 		const installed = function (this: any) {
 			if (patch.active) {
 				try {
-					renderCcstyle(this, kind, patch);
+					renderAsToolCard(this, kind, patch);
 					return;
 				} catch {
 					// 渲染失败回退原生
 				}
 			}
 			// 回退原生前恢复 paddingY，避免原生渲染丢失上下内边距
-			if (this._ccstyleOriginalPaddingY !== undefined) {
-				this.paddingY = this._ccstyleOriginalPaddingY;
-				delete this._ccstyleOriginalPaddingY;
+			if (this._simplifyOriginalPaddingY !== undefined) {
+				this.paddingY = this._simplifyOriginalPaddingY;
+				delete this._simplifyOriginalPaddingY;
 			}
 			original.call(this);
 		};
@@ -192,7 +192,7 @@ export function isMessageDisplayComponent(value: any): boolean {
 	);
 }
 
-/** 遍历当前 transcript，让已挂载的消息组件按当前 mode 重渲染（/ccstyle on|off 切换）。 */
+/** 遍历当前 transcript，让已挂载的消息组件按当前主题重渲染。 */
 export function refreshMessageDisplays(root: any): void {
 	walkComponentTree(root, (value: any) => {
 		if (isMessageDisplayComponent(value)) {

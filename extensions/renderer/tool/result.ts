@@ -164,9 +164,9 @@ export function toolElapsedMs(
 	const seconds = context?.result?.structuredContent?.wall_time_seconds;
 	if (!isPartial && typeof seconds === "number" && Number.isFinite(seconds) && seconds >= 0)
 		return seconds * 1000;
-	const startedAt = context?.state?.ccstyleShellStartedAt;
+	const startedAt = context?.state?.shellStartedAt;
 	if (typeof startedAt !== "number") return undefined;
-	const endedAt = context?.state?.ccstyleShellEndedAt;
+	const endedAt = context?.state?.shellEndedAt;
 	return Math.max(0, (typeof endedAt === "number" ? endedAt : Date.now()) - startedAt);
 }
 

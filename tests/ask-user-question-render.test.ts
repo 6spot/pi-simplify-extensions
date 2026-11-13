@@ -144,6 +144,46 @@ test("native question card has one title control; waiting, selection and cancell
 	}
 });
 
+test("waiting question expands into the full input and a pending answer", () => {
+	const hooks = installDefaultMode(new WriteExecutionMetadataStore());
+	try {
+		const options = [
+			{
+				question: "Which library should we use?",
+				header: "Library",
+				options: [{ label: "Read", description: "read only" }, { label: "Bash" }],
+			},
+		];
+		const tool = new ToolExecutionComponent(
+			"ask_user_question",
+			"ask-wait-expand",
+			{ questions: options },
+			{},
+			undefined,
+			ui(),
+			process.cwd(),
+		) as any;
+		tool.markExecutionStarted();
+		tool.updateResult({ content: [], isError: false }, true);
+		const waiting = tool
+			.render(120)
+			.map(strip)
+			.filter((line: string) => line.trim());
+		assert.match(waiting[0]!, /○ Question · 1 questions · waiting · (?:Expand|to show more)/);
+		assert.doesNotMatch(waiting.join("\n"), /Input|Waiting for your answer/);
+		tool.setExpanded(true);
+		const expanded = tool
+			.render(120)
+			.map(strip)
+			.filter((line: string) => line.trim());
+		assert.match(expanded.join("\n"), /Input/);
+		assert.match(expanded.join("\n"), /Which library should we use\?/);
+		assert.match(expanded.join("\n"), /Waiting for your answer…/);
+	} finally {
+		hooks.shutdown();
+	}
+});
+
 test("grouped questions keep compact actual selection summaries", () => {
 	const hooks = installToolGrouping(() => true);
 	try {

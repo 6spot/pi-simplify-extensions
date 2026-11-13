@@ -4,7 +4,7 @@ type BackgroundTaskState = { status: "running" | "blocked" };
  * Pi loads each extension entry in its own module graph, so a plain module-level store would not be
  * shared between this display package and the separately installed Subagent package.
  */
-const REGISTRY = Symbol.for("pi-simplify.background-tasks");
+const REGISTRY = Symbol.for("pi.simplify.background-tasks");
 type Registry = { active: readonly BackgroundTaskState[] };
 const registry = ((globalThis as typeof globalThis & { [key: symbol]: Registry | undefined })[REGISTRY] ??= {
 	active: [],
