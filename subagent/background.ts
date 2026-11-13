@@ -1,6 +1,7 @@
 import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
+import { setActiveBackgroundTasks } from "../extensions/utils/background-tasks.ts";
 import { StringEnum } from "../extensions/utils/string-enum.ts";
 import { TaskManager, type TaskEvent, type TaskSnapshot } from "./tasks.ts";
 import { renderTaskNotices } from "./notices.ts";
@@ -21,15 +22,19 @@ export function registerTaskManager(
 	const observedFinal = new Map<string, Pick<TaskSnapshot, "status" | "result" | "error">>();
 	const owns = (ctx: ExtensionContext) => owner === ctx.sessionManager.getSessionId();
 	const terminal = (status: TaskSnapshot["status"]) => !["running", "blocked"].includes(status);
+	const isActive = (task: TaskSnapshot): task is TaskSnapshot & { status: "running" | "blocked" } =>
+		!terminal(task.status);
 	const showTasks = (ctx: ExtensionContext) => {
 		if (!owns(ctx)) return;
 		const tasks = manager?.list() ?? [];
 		const retained = new Set(tasks.map((task) => task.id));
 		for (const [key, item] of pending) if (!retained.has(item.task.id)) pending.delete(key);
 		for (const id of observedFinal.keys()) if (!retained.has(id)) observedFinal.delete(id);
+		const active = tasks.filter(isActive);
+		setActiveBackgroundTasks(active);
 		if (!ctx.hasUI) return;
-		const active = tasks.filter((task) => !terminal(task.status));
-		if (!active.length) {
+		// The Working row carries the counts while the parent runs; only an idle parent needs the widget.
+		if (!active.length || (ctx.mode === "tui" && !ctx.isIdle())) {
 			ctx.ui.setWidget(widgetKey, undefined);
 			return;
 		}
@@ -133,9 +138,14 @@ export function registerTaskManager(
 			throw new Error("Subagent session changed; wait for session_start before dispatching");
 		return (manager ??= create(ctx));
 	};
-	pi.on("agent_settled", (_event, ctx) => schedule(ctx));
+	pi.on("agent_settled", (_event, ctx) => {
+		schedule(ctx);
+		showTasks(ctx);
+	});
 	pi.on("session_compact", (_event, ctx) => schedule(ctx));
-	pi.on("before_agent_start", (event) => {
+	pi.on("before_agent_start", (event, ctx) => {
+		// The Working row takes over while the parent runs.
+		showTasks(ctx);
 		if (!manager?.list().length) return;
 		return {
 			systemPrompt: `${event.systemPrompt}\n\nBackground subagent communication: tool results are evidence for your reply, not a user-facing final answer. When a task finishes, summarize its actual result or failure for the user. Before ending a reply with tasks still active, state that they are running or waiting for input; do not claim all work is finished. Do not silently end on a new terminal event. Previously answered decisions need no duplicate reply. Ordinary progress is passive context, not a reason to acknowledge or poll. If no useful independent work remains and tasks are still active, tell the user what is pending, then call subagent_task sleep alone to suspend this run without another model request. Blockers, decisions and terminal results wake you automatically; send explicit instructions to resume a blocked child.`,
@@ -155,6 +165,7 @@ export function registerTaskManager(
 	pi.on("session_shutdown", async (_event, ctx) => {
 		owner = undefined;
 		clearDelivery();
+		setActiveBackgroundTasks([]);
 		if (ctx.hasUI) ctx.ui.setWidget(widgetKey, undefined);
 		await manager?.dispose();
 		manager = undefined;
