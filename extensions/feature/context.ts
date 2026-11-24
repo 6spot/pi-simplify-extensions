@@ -559,6 +559,7 @@ export function collectContextBreakdown(
 ): ContextBreakdown {
 	const options = (ctx.getSystemPromptOptions?.() ?? {}) as BuildSystemPromptOptions;
 	const selectedTools = new Set(options.selectedTools ?? ["read", "bash", "edit", "write"]);
+	for (const name of options.hiddenTools ?? []) selectedTools.delete(name);
 	const toolDefinitionPreview: string[] = [];
 	const toolResultPreview: string[] = [];
 	const contextPreview: string[] = [];

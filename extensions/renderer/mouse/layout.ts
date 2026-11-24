@@ -1,4 +1,4 @@
-import { visibleWidth } from "@earendil-works/pi-tui";
+import { Container, visibleWidth } from "@earendil-works/pi-tui";
 import { ThinkingPreviewBlock } from "../../feature/compact-thinking.ts";
 import { ToolGroupComponent } from "../tool/grouping.ts";
 import { isMessageDisplayComponent } from "../tool/message-display.ts";
@@ -92,7 +92,7 @@ export function componentAtLocalRow(
 	width: number,
 ): ComponentRowHit | null {
 	if (component instanceof ToolGroupComponent) {
-		// 展开的 group：头两行（空行 + 头行）归 group，其余行映射到内部工具。
+		// 间隔与头尾归分组，内容行归本帧实际绘制的工具。
 		const child = component.childAtRow(localRow, width);
 		return child ? { ...child, group: component } : { component, row: localRow };
 	}
@@ -109,16 +109,28 @@ export function componentAtLocalRow(
 		return { component, row: localRow };
 	}
 	if (!Array.isArray(component.children)) return null;
+	// Pi 1.6 保存子组件与绘制行，1.5 保存组件与行高。直接命中屏幕上的那一帧。
+	const layout = component.childLines ?? component.mouseLayout;
+	const painted = component instanceof Container && layout?.width === width ? layout : undefined;
+	const children = painted?.children ?? component.children;
 	let offset = 0;
-	for (const child of component.children) {
-		let lines: string[] = [];
-		try {
-			const rendered = child.render?.(width);
-			if (Array.isArray(rendered)) lines = rendered.map((line) => String(line));
-		} catch {
-			lines = [];
+	for (const [index, item] of children.entries()) {
+		let child = item;
+		let height: number;
+		if (painted?.parts) {
+			height = painted.parts[index].length;
+		} else if (painted) {
+			child = item.component;
+			height = item.height;
+		} else {
+			try {
+				const rendered = child.render?.(width);
+				height = Array.isArray(rendered) ? rendered.length : 0;
+			} catch {
+				continue;
+			}
 		}
-		if (localRow < offset + lines.length) {
+		if (localRow < offset + height) {
 			return (
 				componentAtLocalRow(child, localRow - offset, width) ?? {
 					component: child,
@@ -126,7 +138,7 @@ export function componentAtLocalRow(
 				}
 			);
 		}
-		offset += lines.length;
+		offset += height;
 	}
 	return null;
 }
