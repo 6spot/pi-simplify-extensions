@@ -9,6 +9,7 @@ import claudeCodeStyleExtension, {
 	installToolMouseInteraction,
 	SHOW_MORE_LABEL,
 } from "../extensions/renderer/index.ts";
+import { stripAnsi } from "../extensions/utils/ansi-text.ts";
 import { hasActiveTextPreview } from "../extensions/feature/context.ts";
 import { installToolGrouping, ToolGroupComponent } from "../extensions/renderer/tool/grouping.ts";
 import {
@@ -718,11 +719,8 @@ test("codemode Input show-more 预览带 js 围栏（弹框按 Markdown 着色�
 		// pi 的 Markdown 用完整语言名渲染围栏，并用 highlightCode 给代码行上色
 		const fenced = opened.find((body) => body.includes("```javascript"));
 		assert.ok(fenced, `Input 预览应带 javascript 围栏，实际: ${JSON.stringify(opened)}`);
-		assert.match(
-			fenced!,
-			/\x1b\[38;(?:2;\d+;\d+;\d+|5;\d+)mconst\x1b\[39m a =/,
-			"围栏内代码着语法色",
-		);
+		assert.match(fenced, /\x1b\[38;(?:2;\d+;\d+;\d+|5;\d+)mconst\x1b\[39m/, "关键字着语法色");
+		assert.match(stripAnsi(fenced), /const a = await tools\.bash/, "预览保留完整代码");
 		assert.ok(!fenced!.includes("code:"), "预览正文不带 code: 标签");
 	} finally {
 		installToolMouseInteraction({});

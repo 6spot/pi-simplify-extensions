@@ -1,0 +1,15 @@
+{
+  "confirmedDigest": "1b364e3b65d47628c17444bd85ac09feeac37b7c771d4ac99545507e9445a297",
+  "changedPaths": [
+    "README.md",
+    "extensions/feature/context.ts",
+    "extensions/renderer/mouse/interaction.ts",
+    "extensions/renderer/mouse/layout.ts",
+    "extensions/renderer/tool/grouping.ts",
+    "tests/context-dialog.test.ts",
+    "tests/mouse-interaction.test.ts",
+    "tests/tool-grouping.test.ts"
+  ],
+  "runs": [],
+  "authorization": "用户在本次会话对已完成的 k-084d53c45dac 明确要求「提交推送」。"
+}

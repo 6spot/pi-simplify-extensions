@@ -234,6 +234,37 @@ test("context breakdown counts tool schemas once", () => {
 	);
 });
 
+test("tools definition counts and previews only the explicitly declared tools", () => {
+	const definitions = ["codemode", "read", "bash"].map((name) => ({
+		name,
+		description: `Use ${name}`,
+		parameters: { type: "object" },
+	}));
+	const tools = definitions.map((definition) => ({ ...definition, sourceInfo: {} })) as any;
+	for (const [hiddenTools, visible] of [
+		[undefined, ["codemode", "read"]],
+		[["read", "unregistered"], ["codemode"]],
+		[["codemode", "read"], []],
+	] as const) {
+		const ctx = {
+			getSystemPromptOptions: () => ({ selectedTools: ["codemode", "read"], hiddenTools }),
+			sessionManager: { buildSessionProjection: () => ({ entries: [] }) },
+		} as any;
+		const { parts, previews } = collectContextBreakdown(ctx, tools);
+		const declared = definitions.filter(({ name }) => visible.some((item) => item === name));
+		const expectedTokens = declared.reduce(
+			(sum, tool) => sum + Math.ceil(JSON.stringify(tool).length / 4),
+			0,
+		);
+		assert.equal(parts.find((part) => part.label === "Tools definition")?.tokens, expectedTokens);
+		assert.deepEqual(
+			Array.from(previews.tools.matchAll(/^## Definition: (.+)$/gm), (match) => match[1]),
+			visible,
+		);
+		if (!visible.length) assert.equal(previews.tools, "No active tool definitions.");
+	}
+});
+
 test("resolveUsedTokens rejects inconsistent or implausibly small provider usage", () => {
 	assert.equal(resolveUsedTokens({ tokens: 1, percent: 7 }, 20_000, 272_000), 19_040);
 	assert.equal(resolveUsedTokens({ tokens: 19_000, percent: 7 }, 20_000, 272_000), 19_000);

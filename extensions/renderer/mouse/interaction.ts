@@ -514,7 +514,7 @@ function handleFullscreenToolClick(tui: any, packet: SgrMousePacket): boolean {
 		const onHint = Boolean(
 			hint &&
 				(isThinking || (packet.col >= hint.startCol && packet.col <= hint.endCol)) &&
-				isCollapsedHintRow(component, line, hit.localRow),
+				isCollapsedHintRow(component, line, target.row),
 		);
 		if (!onHint) {
 			// 面板内非提示区（工具卡标题/摘要行、thinking 预览正文）：单击收起整块面板。
@@ -684,7 +684,7 @@ function handleFullscreenToolHover(tui: any, packet: SgrMousePacket): void {
 					target = { kind: "tool", component, view, section };
 				}
 			} else if (isMessageDisplayComponent(component)) {
-				if (overHint && isCollapsedHintRow(component, line, hit.localRow))
+				if (overHint && isCollapsedHintRow(component, line, componentHit?.row))
 					target = { kind: "message", component };
 			}
 		}

@@ -7,8 +7,13 @@ import {
 	initTheme,
 } from "@earendil-works/pi-coding-agent";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import { Container, Spacer } from "@earendil-works/pi-tui";
-import { installToolGrouping, ToolGroupComponent } from "../extensions/renderer/tool/grouping.ts";
+import { Container, Spacer, visibleWidth } from "@earendil-works/pi-tui";
+import {
+	installToolGrouping,
+	paddedBackgroundRow,
+	ToolGroupComponent,
+} from "../extensions/renderer/tool/grouping.ts";
+import { componentAtLocalRow } from "../extensions/renderer/mouse/layout.ts";
 import {
 	humanizeToolLabel,
 	renderToolSummary,
@@ -30,7 +35,9 @@ function started(name: string, id: string, args: any = {}) {
 test("expanded groups preserve Kitty and iTerm2 image occupancy and following child hitboxes", () => {
 	const placements = [
 		["Read image", "\x1b_Ga=T,r=4;AAAA\x1b\\", "", "", ""],
+		["Read image", "\x1b_Ga=T,r=3;AAAA\x1b\\", " │ ", " │ "],
 		["Read image", "", "", "", "\x1b[3A\x1b]1337;File=inline=1:AAAA\x07"],
+		["", "", "", "\x1b[3A\x1b]1337;File=inline=1:AAAA\x07"],
 	];
 	for (const imageLines of placements) {
 		const hooks = installToolGrouping(() => true);
@@ -46,16 +53,18 @@ test("expanded groups preserve Kitty and iTerm2 image occupancy and following ch
 			group.setExpanded(true);
 			const lines = group.render(100);
 			const followingRow = lines.findIndex((line) => line.includes("Bash after image"));
-			assert.equal(followingRow, 2 + imageLines.length);
+			assert.equal(followingRow, 2 + imageLines.length + 1);
+			assert.equal(group.childAtRow(followingRow - 1, 100), null);
 			for (let row = 0; row < imageLines.length; row++) {
 				assert.equal(group.childAtRow(2 + row, 100)?.component, read);
+				if (imageLines[row].startsWith("\x1b")) assert.ok(lines[2 + row].includes(imageLines[row]));
 			}
 			assert.equal(group.childAtRow(followingRow, 100)?.component, bash);
 			// 最后一项同样保留图片完整占位，不依赖容器尾部留白凑行数。
 			bash.render = () => imageLines;
 			group.invalidate();
 			const last = group.render(100);
-			assert.equal(last.length, 2 + imageLines.length * 2 + 1);
+			assert.equal(last.length, 2 + imageLines.length * 2 + 1 + 1);
 		} finally {
 			hooks.shutdown();
 		}
@@ -224,6 +233,86 @@ test("expanded native cards align nested trees through interleaved ANSI padding"
 	}
 });
 
+test("expanded group reuses equal streaming frames and locates tools in the frame on screen", () => {
+	const hooks = installToolGrouping(() => true);
+	try {
+		const transcript = new Container();
+		let renders = 0;
+		transcript.addChild({
+			render: () => {
+				renders++;
+				return ["preceding message"];
+			},
+			invalidate() {},
+		});
+		const read = started("read", "stream", { path: "a.ts" });
+		const bash = started("bash", "next", { command: "ls" });
+		read.render = (width: number) => {
+			renders++;
+			return [
+				" ✓ ",
+				"Read a.ts",
+				...(read.result?.content[0].text.split("\n") ?? []),
+				`${width} cols`,
+				"\x1b[2m │ \x1b[0m",
+			];
+		};
+		bash.render = () => {
+			renders++;
+			return ["Bash ls"];
+		};
+		transcript.addChild(read);
+		transcript.addChild(bash);
+		const group = transcript.children[1] as ToolGroupComponent;
+		group.setExpanded(true);
+		const first = group.render(80);
+		assert.strictEqual(group.render(80), first);
+		const before = transcript.render(80);
+		const title = before.findIndex((line) => line.includes("Read a.ts"));
+		const following = before.findIndex((line) => line.includes("Bash ls"));
+		assert.equal(following - title, 3, "one existing rail separates the tools");
+		const painted = renders;
+		assert.deepEqual(componentAtLocalRow(transcript, following, 80), {
+			component: bash,
+			row: 0,
+			group,
+		});
+		assert.equal(componentAtLocalRow(transcript, following - 1, 80)?.component, group);
+		assert.equal(renders, painted, "looking up either row uses the recorded paint");
+
+		read.updateResult(
+			{ content: [{ type: "text", text: "new output\nsecond line" }], isError: false },
+			true,
+		);
+		const updated = transcript.render(80);
+		assert.ok(updated.some((line) => line.includes("new output")));
+		assert.equal(componentAtLocalRow(transcript, following, 80)?.component, read);
+		assert.equal(componentAtLocalRow(transcript, following + 2, 80)?.component, bash);
+		read.updateResult(
+			{ content: [{ type: "text", text: "replacement\nsecond line" }], isError: false },
+			true,
+		);
+		assert.ok(
+			group.render(80).some((line) => line.includes("replacement")),
+			"same-height partial updates repaint",
+		);
+		assert.ok(group.render(50).some((line) => line.includes("48 cols")));
+		hooks.setTheme({ fg: (_slot: string, value: string) => `\x1b[34m${value}\x1b[39m` });
+		assert.ok(group.render(50)[1].includes("\x1b[34m"));
+	} finally {
+		hooks.shutdown();
+	}
+});
+
+test("expanded backgrounds preserve fitting ANSI and clip wide graphemes at the panel edge", () => {
+	const styled = "\x1b[32m中📎a\x1b[0m";
+	assert.equal(paddedBackgroundRow(undefined, "toolPendingBg", styled, 9), ` ${styled}   `);
+	const clipped = paddedBackgroundRow(undefined, "toolPendingBg", styled, 5);
+	assert.equal(visibleWidth(clipped), 5);
+	assert.match(clipped, /中/);
+	assert.doesNotMatch(clipped, /📎/);
+});
+
 test("expanded group rows follow the worst tool status", () => {
 	const hooks = installToolGrouping(() => true);
 	const ANSI_BY_SLOT: Record<string, string> = {
@@ -244,7 +333,7 @@ test("expanded group rows follow the worst tool status", () => {
 		parent.addChild(read);
 		parent.addChild(bash);
 		const group = parent.children[0] as ToolGroupComponent;
-		// 固定引用：子工具 paint 命中缓存时，分组展开缓存才会复用整卡行。
+		// 固定子工具画面，单独验证分组状态与底色的变化。
 		let readPaints: string[] | undefined;
 		let bashPaints: string[] | undefined;
 		read.render = () => (readPaints ??= [" ✓ Read a.ts", " ok"]);
@@ -442,7 +531,7 @@ test("off refresh ungroups, reload rescans existing tools, and stale shutdown pr
 	assert.equal(prototype.addChild, originalAdd);
 });
 
-test("pending and expanded groups bypass settled render caching", () => {
+test("pending collapsed groups stay live and expanded groups reuse only unchanged output", () => {
 	const hooks = installToolGrouping(() => true);
 	try {
 		const parent = new Container() as any;
@@ -463,7 +552,12 @@ test("pending and expanded groups bypass settled render caching", () => {
 		bash.updateResult({ content: [], isError: false });
 		group.setExpanded(true);
 		const expanded = group.render(120);
-		assert.notStrictEqual(group.render(120), expanded, "expanded child output is not memoized");
+		assert.strictEqual(group.render(120), expanded, "identical painted lines can be reused");
+		bash.updateResult({
+			content: [{ type: "text", text: "changed after expand" }],
+			isError: false,
+		});
+		assert.match(group.render(120).join("\n"), /changed after expand/);
 	} finally {
 		hooks.shutdown();
 	}

@@ -155,20 +155,39 @@ function statusColor(value: ToolStatus): string {
 				: "dim";
 }
 
-function visibleLines(lines: string[]): string[] {
-	const keep = new Set<number>();
+/** 保留图片的整段占位，普通空行和单独占一行的首个状态标记由分组绘制。 */
+function expandedChildLines(lines: string[]): { rows: string[]; trailingRail: boolean } {
+	const imageRows = new Set<number>();
 	for (let index = 0; index < lines.length; index++) {
 		const placement = imagePlacement(lines[index]);
-		if (!placement) {
-			if (stripAnsi(lines[index]).trim()) keep.add(index);
-			continue;
-		}
-		// 图片锚点之外的空行也占终端空间，裁掉后会覆盖后续工具。
+		if (!placement) continue;
 		const start = placement.grows === "up" ? index - placement.rows + 1 : index;
 		const end = placement.grows === "down" ? index + placement.rows - 1 : index;
-		for (let row = Math.max(0, start); row <= Math.min(lines.length - 1, end); row++) keep.add(row);
+		for (let row = Math.max(0, start); row <= Math.min(lines.length - 1, end); row++) {
+			imageRows.add(row);
+		}
 	}
-	return lines.filter((_line, index) => keep.has(index));
+	const rows: string[] = [];
+	let lastSourceRow = -1;
+	for (const [index, raw] of lines.entries()) {
+		let line = raw;
+		if (!imageRows.has(index)) {
+			if (!rows.length) {
+				line = stripLeadingStatusIcon(raw)
+					.replace(/^ +/, "")
+					.replace(/^((?:\x1b\[[0-?]*[ -/]*[@-~])*) +/, "$1");
+				if (!hasVisibleText(line)) continue;
+			} else if (!stripAnsi(raw).trim()) continue;
+		}
+		rows.push(line);
+		lastSourceRow = index;
+	}
+	// 图片占位行即使只含树线，也不能充当相邻工具的间隔。
+	const trailingRail =
+		rows.length > 1 &&
+		!imageRows.has(lastSourceRow) &&
+		/^│[\s│]*$/.test(stripAnsi(rows.at(-1)!).trim());
+	return { rows, trailingRail };
 }
 
 function stripLeadingSpaces(line: string, count: number): string {
@@ -201,8 +220,12 @@ export function paddedBackgroundRow(
 	bgAnsiOverride?: string,
 ): string {
 	const innerWidth = Math.max(0, width - 2);
-	const clipped = truncateToWidth(stripBackgroundAnsi(content), innerWidth, "");
-	const row = ` ${clipped}${" ".repeat(Math.max(0, innerWidth - visibleWidth(clipped)))} `;
+	const plain = stripBackgroundAnsi(content);
+	const contentWidth = visibleWidth(plain);
+	const fits = innerWidth > 0 && contentWidth <= innerWidth;
+	const clipped = fits ? plain : truncateToWidth(plain, innerWidth, "");
+	const padding = innerWidth - (fits ? contentWidth : visibleWidth(clipped));
+	const row = ` ${clipped}${" ".repeat(Math.max(0, padding))} `;
 	const bgAnsi =
 		bgAnsiOverride ||
 		(typeof theme?.bg === "function"
@@ -416,10 +439,10 @@ type ExpandedGroupCache = {
 	hover: boolean;
 	theme: unknown;
 	fullscreen: boolean;
-	bgSlot: string;
 	/** 进行中和成功共用中性底色，状态仍须独立参与缓存判断。 */
 	statuses: ToolStatus[];
-	paints: readonly unknown[];
+	paints: string[][];
+	hits: { component: Component; start: number; end: number }[];
 	lines: string[];
 };
 
@@ -439,7 +462,7 @@ export class ToolGroupComponent extends Container {
 	private readonly patch: Patch;
 	/** 仅缓存已完成且折叠的分组；pending 每帧现算。 */
 	private settledCache: SettledGroupCache | undefined;
-	/** 展开分组：子工具 paint 引用未变则复用整卡行。 */
+	/** 绘制行与工具命中区间来自同一帧。 */
 	private expandedPaintCache: ExpandedGroupCache | undefined;
 
 	constructor(patch: Patch) {
@@ -486,28 +509,20 @@ export class ToolGroupComponent extends Container {
 		this.hintHovered = hovered;
 	}
 
-	/**
-	 * 展开时按局部行定位内部组件（null = 行属于 group 自身：空行/头行/尾行）。
-	 * 行数计算与 render 保持一致：宽度 width-2 + 空行过滤。
-	 */
-	childAtRow(localRow: number, width: number): { component: any; row: number } | null {
+	/** 头、尾和工具间隔归分组，工具只接收实际画出的内容行。 */
+	childAtRow(localRow: number, width: number): { component: Component; row: number } | null {
 		if (!this._expanded || localRow < 2) return null;
-		let offset = 2;
-		for (const tool of this.children) {
-			let lines: string[] = [];
+		if (this.expandedPaintCache?.width !== width) {
 			try {
-				const rendered = tool.render?.(Math.max(1, width - 2));
-				if (Array.isArray(rendered)) lines = visibleLines(rendered.map((line) => String(line)));
+				this.render(width);
 			} catch {
-				lines = [];
+				return null;
 			}
-			const lineCount = Math.max(1, lines.length);
-			if (localRow < offset + lineCount) {
-				return { component: tool, row: localRow - offset };
-			}
-			offset += lineCount;
 		}
-		return null;
+		const hit = this.expandedPaintCache?.hits.find(
+			({ start, end }) => localRow >= start && localRow < end,
+		);
+		return hit ? { component: hit.component, row: localRow - hit.start } : null;
 	}
 
 	invalidate(): void {
@@ -560,8 +575,34 @@ export class ToolGroupComponent extends Container {
 		if (cached) return cached;
 		const theme = this.patch.theme;
 		const fg = (color: string, text: string) => theme?.fg?.(color, text) ?? text;
-		const counts = { pending: 0, success: 0, error: 0, cancelled: 0, unknown: 0 };
 		const statuses = this.children.map(status);
+		const childWidth = Math.max(1, width - 2);
+		const childPaints = this._expanded
+			? this.children.map((tool) => {
+					const paint = tool.render?.(childWidth);
+					return Array.isArray(paint) ? paint : [];
+				})
+			: undefined;
+		const previous = this.expandedPaintCache;
+		if (
+			childPaints &&
+			previous &&
+			previous.width === width &&
+			previous.hover === this.hintHovered &&
+			previous.theme === theme &&
+			previous.fullscreen === isToolTuiFullscreen() &&
+			previous.paints.length === childPaints.length &&
+			previous.statuses.every((value, index) => value === statuses[index]) &&
+			previous.paints.every((paint, index) => {
+				const next = childPaints[index];
+				return (
+					paint === next ||
+					(paint.length === next.length && paint.every((line, row) => line === next[row]))
+				);
+			})
+		)
+			return previous.lines;
+		const counts = { pending: 0, success: 0, error: 0, cancelled: 0, unknown: 0 };
 		for (const value of statuses) counts[value]++;
 		const countText = groupCountText(counts, fg);
 		const overall = groupOverallStatus(counts);
@@ -575,48 +616,31 @@ export class ToolGroupComponent extends Container {
 			? stripAnsi(lines[1]!).trim()
 			: undefined;
 		const total = this.children.length;
-		const childPaints = this._expanded
-			? (this.children as any[]).map((tool) => tool.render?.(Math.max(1, width - 2)))
-			: undefined;
-		if (this._expanded && childPaints) {
-			const expandedHit = this.expandedPaintCache;
-			if (
-				expandedHit &&
-				expandedHit.width === width &&
-				expandedHit.hover === this.hintHovered &&
-				expandedHit.theme === this.patch.theme &&
-				expandedHit.fullscreen === isToolTuiFullscreen() &&
-				expandedHit.bgSlot === aggregateToolCardBgSlot(this.children) &&
-				expandedHit.paints.length === childPaints.length &&
-				expandedHit.statuses.every((value, index) => value === statuses[index]) &&
-				expandedHit.paints.every((paint, index) => paint === childPaints[index])
-			) {
-				return expandedHit.lines;
+		if (!childPaints) {
+			const visibleTotal = Math.min(6, total);
+			for (let index = 0; index < visibleTotal; index++) {
+				lines.push(
+					collapsedGroupToolLine(this.children[index], index === visibleTotal - 1, fg, width),
+				);
 			}
+			if (total > visibleTotal) {
+				lines.push(truncateToWidth(fg("dim", `  … ${total - visibleTotal} more tools`), rowWidth));
+			}
+			if (counts.pending === 0) this.storeSettledCache(width, lines);
+			return lines;
 		}
-		const expandedLines: string[] = [];
-		const visibleTotal = this._expanded ? total : Math.min(6, total);
-		for (let index = 0; index < visibleTotal; index++) {
+		const hits: ExpandedGroupCache["hits"] = [];
+		const backgroundSlot = aggregateToolCardBgSlot(this.children);
+		for (let index = 0; index < total; index++) {
 			const tool = this.children[index];
 			const toolStatus = statuses[index];
 			const color = statusColor(toolStatus);
-			const branch = index === total - 1 ? "└" : "├";
-			const continuation = index === total - 1 ? "  " : "│ ";
-			if (!this._expanded) {
-				lines.push(collapsedGroupToolLine(tool, index === visibleTotal - 1, fg, width));
-				continue;
-			}
-			const rendered = visibleLines(Array.isArray(childPaints?.[index]) ? childPaints[index] : []);
-			// 首行的状态图标由组前缀给；剥完什么都不剩就丢掉这一行，再对新的首行剥一次，
-			// 否则会多出一条只有 `├ ✓` 的空行，标题带着图标落到下一行。
-			while (rendered.length) {
-				rendered[0] = stripLeadingStatusIcon(rendered[0])
-					.replace(/^ +/, "")
-					.replace(/^((?:\x1b\[[0-?]*[ -/]*[@-~])*) +/, "$1");
-				if (hasVisibleText(rendered[0])) break;
-				rendered.shift();
-			}
-			const childLines = rendered.length ? rendered : [toolSummary(tool).main];
+			const between = index < total - 1;
+			const branch = between ? "├" : "└";
+			const continuation = fg("dim", between ? "│ " : "  ");
+			const { rows: childLines, trailingRail } = expandedChildLines(childPaints[index]);
+			if (!childLines.length) childLines.push(toolSummary(tool).main);
+			const start = lines.length;
 			for (let lineIndex = 0; lineIndex < childLines.length; lineIndex++) {
 				const content =
 					// 续行只剥外层 Box 的 1 格 left pad，保留 Input/Output 相对缩进
@@ -624,32 +648,25 @@ export class ToolGroupComponent extends Container {
 				const prefix =
 					lineIndex === 0
 						? `${fg("dim", branch)} ${fg(color, statusIcon(toolStatus))} `
-						: fg("dim", continuation);
-				expandedLines.push(prefix + content);
+						: continuation;
+				lines.push(paddedBackgroundRow(theme, backgroundSlot, prefix + content, width));
 			}
+			const end = between && trailingRail ? lines.length - 1 : lines.length;
+			hits.push({ component: tool, start, end });
+			if (between && !trailingRail)
+				lines.push(paddedBackgroundRow(theme, backgroundSlot, continuation, width));
 		}
-		if (!this._expanded && total > visibleTotal)
-			lines.push(truncateToWidth(fg("dim", `  … ${total - visibleTotal} more tools`), rowWidth));
-		if (this._expanded) {
-			// 有一个失败整卡用失败底色，其余状态保持中性底色。
-			const backgroundSlot = aggregateToolCardBgSlot(this.children);
-			for (const line of expandedLines) {
-				lines.push(paddedBackgroundRow(theme, backgroundSlot, line, width));
-			}
-			lines.push(paddedBackgroundRow(theme, backgroundSlot, "", width));
-			this.expandedPaintCache = {
-				width,
-				hover: this.hintHovered,
-				theme: this.patch.theme,
-				fullscreen: isToolTuiFullscreen(),
-				bgSlot: backgroundSlot,
-				statuses,
-				paints: childPaints ?? [],
-				lines,
-			};
-		} else if (counts.pending === 0) {
-			this.storeSettledCache(width, lines);
-		}
+		lines.push(paddedBackgroundRow(theme, backgroundSlot, "", width));
+		this.expandedPaintCache = {
+			width,
+			hover: this.hintHovered,
+			theme,
+			fullscreen: isToolTuiFullscreen(),
+			statuses,
+			paints: childPaints,
+			hits,
+			lines,
+		};
 		return lines;
 	}
 }
