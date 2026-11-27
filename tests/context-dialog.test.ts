@@ -265,6 +265,42 @@ test("tools definition counts and previews only the explicitly declared tools", 
 	}
 });
 
+test("system prompt previews filter hidden tool changes in snapshots and updates", () => {
+	const snapshot = {
+		role: "system",
+		content: "Initial tools",
+		toolsAdded: ["read", "codemode", "bash", "write"].map((name) => ({ name })),
+	};
+	const update = {
+		role: "system",
+		content: "Keep earlier read results.",
+		toolsRemoved: [{ name: "write" }, { name: "bash" }],
+	};
+	const entries = [
+		{ sourceEntry: { type: "compaction" }, messages: [snapshot] },
+		{ sourceEntry: { type: "message" }, messages: [update] },
+	];
+	for (const [hiddenTools, added, removed] of [
+		[["read", "write"], ["codemode", "bash"], ["bash"]],
+		[["read", "write", "codemode", "bash"], [], []],
+		[undefined, ["read", "codemode", "bash", "write"], ["write", "bash"]],
+	] as const) {
+		const ctx = {
+			getSystemPromptOptions: () => ({ selectedTools: ["codemode", "read"], hiddenTools }),
+			sessionManager: { buildSessionProjection: () => ({ entries }) },
+		} as any;
+		const { previews } = collectContextBreakdown(ctx, []);
+		const messages = Array.from(
+			previews.systemPrompt.matchAll(/```json\n([\s\S]*?)\n```/g),
+			([, json]) => JSON.parse(json),
+		);
+		assert.deepEqual(messages, [
+			{ content: snapshot.content, toolsAdded: added, toolsRemoved: [] },
+			{ content: update.content, toolsAdded: [], toolsRemoved: removed },
+		]);
+	}
+});
+
 test("resolveUsedTokens rejects inconsistent or implausibly small provider usage", () => {
 	assert.equal(resolveUsedTokens({ tokens: 1, percent: 7 }, 20_000, 272_000), 19_040);
 	assert.equal(resolveUsedTokens({ tokens: 19_000, percent: 7 }, 20_000, 272_000), 19_000);

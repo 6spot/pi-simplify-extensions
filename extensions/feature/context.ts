@@ -559,7 +559,11 @@ export function collectContextBreakdown(
 ): ContextBreakdown {
 	const options = (ctx.getSystemPromptOptions?.() ?? {}) as BuildSystemPromptOptions;
 	const selectedTools = new Set(options.selectedTools ?? ["read", "bash", "edit", "write"]);
-	for (const name of options.hiddenTools ?? []) selectedTools.delete(name);
+	const hiddenTools = new Set(options.hiddenTools);
+	const visibleToolNames = (tools?: readonly { name: string }[]) =>
+		(tools ?? [])
+			.filter((tool) => typeof tool?.name === "string" && !hiddenTools.has(tool.name))
+			.map((tool) => tool.name);
 	const toolDefinitionPreview: string[] = [];
 	const toolResultPreview: string[] = [];
 	const contextPreview: string[] = [];
@@ -579,7 +583,7 @@ export function collectContextBreakdown(
 	const skillsText = formatSkillsForPrompt(skills).trim();
 
 	for (const tool of allTools) {
-		if (!selectedTools.has(tool.name)) continue;
+		if (!selectedTools.has(tool.name) || hiddenTools.has(tool.name)) continue;
 		const definition = {
 			name: tool.name,
 			description: tool.description,
@@ -618,10 +622,8 @@ export function collectContextBreakdown(
 						previewValue({
 							content: message.content,
 							sections: message.sections,
-							toolsAdded: (message.toolsAdded ?? []).map((tool: { name?: string }) => tool?.name),
-							toolsRemoved: (message.toolsRemoved ?? []).map(
-								(tool: { name?: string }) => tool?.name,
-							),
+							toolsAdded: visibleToolNames(message.toolsAdded),
+							toolsRemoved: visibleToolNames(message.toolsRemoved),
 						}),
 				);
 			} else if (message.role === "assistant") {
