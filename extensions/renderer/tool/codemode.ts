@@ -11,7 +11,6 @@
 import { highlightCode } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { config } from "../../config/config.ts";
-import { stripAnsi } from "../../utils/ansi-text.ts";
 import { oneLine } from "../../utils/format.ts";
 import { sanitizeToolResultText } from "../../utils/tool-result-sanitize.ts";
 import { mcpToolTitle } from "./mcp-title.ts";
@@ -181,14 +180,9 @@ export function codemodeCodeLines(
 	return lines;
 }
 
-/**
- * 所以包一层 `() => { … }` 再取中间那一行。失败或没着色时退回原文。
- */
 export function highlightCodeSummary(summary: string): string {
 	try {
-		const lines = highlightCode(`() => { ${summary} }`, "javascript");
-		const colored = lines[0]?.replace(/^\(\) => \{ /, "").replace(/ \}$/, "");
-		return colored && stripAnsi(colored) === summary ? colored : summary;
+		return highlightCode(summary, "javascript").join("\n");
 	} catch {
 		return summary;
 	}

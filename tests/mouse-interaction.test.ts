@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { ToolExecutionComponent, initTheme } from "@earendil-works/pi-coding-agent";
-import { Container, visibleWidth, type Component } from "@earendil-works/pi-tui";
+import { Container, getKeybindings, visibleWidth, type Component } from "@earendil-works/pi-tui";
 import { createJiti } from "jiti";
 import claudeCodeStyleExtension, {
 	ExpandedToolIoView,
@@ -372,7 +372,7 @@ test("expanded group Input and Output previews close when the background group c
 							terminal: { rows: 40, columns: 100 },
 						},
 						theme,
-						{},
+						getKeybindings(),
 						() => {
 							previewClosed = true;
 							resolve();
@@ -519,7 +519,7 @@ test("tool preview follows its source card and is cleaned up on close and teardo
 			},
 			custom: (factory: any) =>
 				new Promise<void>((resolve) => {
-					previewComponent = factory(tui, theme, {}, () => {
+					previewComponent = factory(tui, theme, getKeybindings(), () => {
 						closeCount++;
 						resolve();
 					});
@@ -598,7 +598,7 @@ test("collapsed disclosure row opens the bounded preview instead of toggling the
 			},
 			async custom(factory: any) {
 				const host = { requestRender() {}, terminal: { rows: 40, columns: 80 } };
-				const view = factory?.(host, theme, {}, () => {});
+				const view = factory?.(host, theme, getKeybindings(), () => {});
 				if (view?.render) opened.push(view.render(80).join("\n"));
 				return undefined;
 			},
@@ -643,7 +643,7 @@ test("codemode Input show-more 预览带 js 围栏（弹框按 Markdown 着色�
 			notify() {},
 			async custom(factory: any) {
 				const host = { requestRender() {}, terminal: { rows: 40, columns: 100 } };
-				const view = factory?.(host, theme, {}, () => {});
+				const view = factory?.(host, theme, getKeybindings(), () => {});
 				if (view && typeof view.render === "function") {
 					opened.push(view.render(100).join("\n"));
 				}
@@ -980,7 +980,7 @@ test("expanded group identical show-more labels open their own content", () => {
 					requestRender() {},
 					terminal: { rows: 40, columns: 100 },
 				};
-				const view = factory?.(host, theme, {}, () => {});
+				const view = factory?.(host, theme, getKeybindings(), () => {});
 				if (view && typeof view.render === "function") {
 					opened.push(view.render(100).join("\n"));
 				}

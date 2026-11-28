@@ -4,8 +4,14 @@
 import assert from "node:assert/strict";
 import { getEventListeners } from "node:events";
 import test from "node:test";
-import { formatSkillsForPrompt, initTheme } from "@earendil-works/pi-coding-agent";
-import { rgbColor, visibleWidth } from "@earendil-works/pi-tui";
+import { formatSkillsForPrompt, initTheme, SessionManager } from "@earendil-works/pi-coding-agent";
+import {
+	KeybindingsManager,
+	type KeybindingsConfig,
+	TUI_KEYBINDINGS,
+	rgbColor,
+	visibleWidth,
+} from "@earendil-works/pi-tui";
 import contextUsageExtension, {
 	capParts,
 	collectContextBreakdown,
@@ -136,6 +142,42 @@ test("context breakdown separates tools, results, and conversation without infla
 		{ label: "Free space", tokens: 100, color: rgbColor(0x76, 0x84, 0x94) },
 	];
 	assert.equal(new Set(finalParts.map((part) => part.color)).size, 8);
+});
+
+test("context preview and token estimate follow the Bash exclusion flag", () => {
+	const sessionManager = SessionManager.inMemory();
+	const ctx = { sessionManager } as any;
+	const bash = {
+		role: "bashExecution" as const,
+		exitCode: 0,
+		cancelled: false,
+		truncated: false,
+		timestamp: 0,
+	};
+	sessionManager.appendMessage({
+		...bash,
+		command: "echo local",
+		output: "local output",
+		excludeFromContext: true,
+	});
+	const excluded = collectContextBreakdown(ctx, []);
+	assert.equal(excluded.previews.contextFiles, "No conversation context.");
+	assert.equal(excluded.parts.find((part) => part.label === "Context")?.tokens, 0);
+
+	sessionManager.appendMessage({ ...bash, command: "echo old", output: "old output" });
+	sessionManager.appendMessage({
+		...bash,
+		command: "echo new",
+		output: "new output",
+		excludeFromContext: false,
+	});
+	const mixed = collectContextBreakdown(ctx, []);
+	assert.match(
+		mixed.previews.contextFiles,
+		/echo old[\s\S]*old output[\s\S]*echo new[\s\S]*new output/,
+	);
+	assert.doesNotMatch(mixed.previews.contextFiles, /local/);
+	assert.equal(mixed.parts.find((part) => part.label === "Context")?.tokens, 10);
 });
 
 test("context breakdown attributes embedded memory and skills once", () => {
@@ -358,12 +400,14 @@ function textPreviewHarness(
 	theme: any = { fg: (_color: string, text: string) => text, bold: (text: string) => text },
 	onMount?: (component: any) => void,
 	tui: any = { terminal: { columns: 80, rows: 24 }, requestRender() {} },
+	bindings: KeybindingsConfig = {},
 ): any {
 	let component: any;
 	return {
+		notify() {},
 		custom: async (factory: any) =>
 			await new Promise<void>((resolve) => {
-				component = factory(tui, theme, null, resolve);
+				component = factory(tui, theme, new KeybindingsManager(TUI_KEYBINDINGS, bindings), resolve);
 				onMount?.(component);
 			}),
 		get component() {
@@ -520,6 +564,47 @@ test("showTextPreview copies content from the [copy] hitbox and flashes confirma
 	}
 });
 
+test("preview uses the rebound line and page keys and measures both mouse buttons from their labels", async () => {
+	const ui = textPreviewHarness(undefined, undefined, undefined, {
+		"tui.select.up": "k",
+		"tui.select.down": "j",
+		"tui.select.pageUp": "u",
+		"tui.select.pageDown": "d",
+		"tui.select.cancel": "ctrl+g",
+	});
+	const content = Array.from({ length: 80 }, (_, i) => `line ${i}`).join("\n");
+	const copied: string[] = [];
+	setPreviewCopyImpl(async (text) => {
+		copied.push(text);
+	});
+	try {
+		const pending = showTextPreview({ ui }, "Output", content);
+		const view = ui.component;
+		const lines = view.render(64);
+		const status = () => view.render(64).at(-2);
+		assert.match(status(), /1-13 \/ 80 lines.*K\/J.*U\/D.*Home\/End.*Ctrl\+G close/);
+		for (const old of ["\x1b[B", "\x1b[6~"]) view.handleInput(old);
+		assert.match(status(), /1-13 \/ 80 lines/);
+		view.handleInput("j");
+		view.handleInput("d");
+		assert.match(status(), /15-27 \/ 80 lines/);
+		view.handleInput("k");
+		view.handleInput("u");
+		assert.match(status(), /1-13 \/ 80 lines/);
+		const title = lines[1];
+		assert.match(title, /\[copy\] \[ctrl\+g\]│$/);
+		const press = (x: number) => view.handleMouse({ type: "press", button: "left", x, y: 1 });
+		press(title.indexOf("[ctrl+g]") - 1);
+		assert.deepEqual(copied, []);
+		press(title.indexOf("[copy]"));
+		assert.deepEqual(copied, [content]);
+		press(title.indexOf("[ctrl+g]"));
+		await pending;
+	} finally {
+		setPreviewCopyImpl(null);
+	}
+});
+
 test("showTextPreview scrollbar supports press and drag", async () => {
 	const ui = textPreviewHarness();
 	const content = Array.from({ length: 100 }, (_, i) => `line ${i + 1}`).join("\n");
@@ -539,7 +624,8 @@ test("showTextPreview scrollbar supports press and drag", async () => {
 type ContextOverlayEntry = { component: any; done: (action?: unknown) => void };
 
 /** /context 主弹框与预览共用 harness：每次 ui.custom 同步挂载一个 overlay 并记录。 */
-function contextDialogHarness(options: { mode?: string } = {}) {
+function contextDialogHarness(options: { mode?: string; bindings?: KeybindingsConfig } = {}) {
+	const keybindings = new KeybindingsManager(TUI_KEYBINDINGS, options.bindings);
 	const fg: Array<[string, string]> = [];
 	const bg: Array<[string, string]> = [];
 	const notifications: string[] = [];
@@ -614,7 +700,7 @@ function contextDialogHarness(options: { mode?: string } = {}) {
 			custom: (factory: any) =>
 				new Promise<unknown>((resolve) => {
 					const entry: ContextOverlayEntry = { component: undefined, done: resolve };
-					entry.component = factory(tui, theme, null, resolve);
+					entry.component = factory(tui, theme, keybindings, resolve);
 					overlays.push(entry);
 				}),
 			notify: (message: string) => notifications.push(message),
@@ -671,6 +757,7 @@ test("context dialog renders every part row with right-aligned figures", async (
 	const header = lines[1] ?? "";
 	assert.match(header, /Context Usage {2}35\.5k \/ 1000k tokens \(3\.5%\)/);
 	assert.match(header, /\[esc\]│$/);
+	assert.match(lines.at(-2) ?? "", /↑\/↓ select.*Enter to preview.*Esc\/Ctrl\+C close/);
 
 	const rows = partRows(lines);
 	for (const label of [
@@ -703,7 +790,7 @@ test("context dialog renders every part row with right-aligned figures", async (
 	assert.equal(new Set(figures.map((figure) => figure.percentEnd)).size, 1, "百分比列右对齐");
 	for (const row of rows) assert.match(row, /\d\.\d% │$/);
 
-	dialog.latest().component.handleInput("\x1b");
+	dialog.latest().component.handleInput("\x03");
 	await dialog.running;
 });
 
@@ -739,6 +826,73 @@ test("context dialog cycles the selection with arrow keys", async () => {
 	assert.equal(selectedIndex(), 0, "向下越界回到首行");
 
 	component.handleInput("\x1b");
+	await dialog.running;
+});
+
+test("context uses the host's remapped keys for selection, confirmation, closing and hints", async () => {
+	const dialog = contextDialogHarness({
+		bindings: {
+			"tui.select.up": "k",
+			"tui.select.down": "j",
+			"tui.select.confirm": ["o", "space"],
+			"tui.select.cancel": ["ctrl+g", "q"],
+		},
+	});
+	const main = dialog.latest().component;
+	const lines = main.render(64);
+	assert.match(lines[1], /\[ctrl\+g\]│$/);
+	assert.match(lines.at(-2), /K\/J select.*O\/Space to preview.*Ctrl\+G\/Q close/);
+	for (const key of ["\x1b[B", "\r", "\x1b", "\x03"]) main.handleInput(key);
+	await tick();
+	assert.equal(dialog.overlays.length, 1);
+	assert.match(main.render(64)[5], /^│›.*System prompt/);
+	main.handleInput("k");
+	assert.match(main.render(64)[10], /^│›.*Context/);
+	main.handleInput("j");
+	main.handleInput("j");
+	main.handleInput(" ");
+	await tick();
+	const preview = dialog.latest().component;
+	assert.match(preview.render(64)[1], /Memory Files.*\[copy\] \[ctrl\+g\]/);
+	preview.handleInput("\x1b");
+	await tick();
+	assert.equal(dialog.overlays.length, 2);
+	preview.handleInput("q");
+	await tick();
+	assert.equal(dialog.overlays.length, 3);
+	dialog.latest().component.handleInput("\x07");
+	await dialog.running;
+});
+
+test("cleared bindings leave mouse actions available on both context overlays", async () => {
+	const dialog = contextDialogHarness({
+		bindings: {
+			"tui.select.up": [],
+			"tui.select.down": [],
+			"tui.select.confirm": [],
+			"tui.select.cancel": [],
+		},
+	});
+	const main = dialog.latest().component;
+	const lines = main.render(44);
+	assert.match(lines[1], /\[close\]│$/);
+	assert.match(lines.at(-2), /Click to preview/);
+	assert.doesNotMatch(lines.at(-2), /select|Enter|Esc/);
+	main.handleInput("\r");
+	main.handleInput("\x1b");
+	await tick();
+	assert.equal(dialog.overlays.length, 1);
+	main.handleMouse({ type: "press", button: "left", x: 9, y: 6 });
+	await tick();
+	const preview = dialog.latest().component;
+	const title = preview.render(50)[1];
+	assert.match(title, /\[copy\] \[close\]│$/);
+	preview.handleMouse({ type: "press", button: "left", x: title.indexOf("[close]"), y: 1 });
+	await tick();
+	const returned = dialog.latest().component;
+	const mainTitle = returned.render(44)[1];
+	const closeColumn = visibleWidth(mainTitle.slice(0, mainTitle.indexOf("[close]")));
+	returned.handleMouse({ type: "press", button: "left", x: closeColumn, y: 1 });
 	await dialog.running;
 });
 

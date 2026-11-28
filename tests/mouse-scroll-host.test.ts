@@ -64,8 +64,8 @@ function realFrame(t: TestContext) {
 	const original = renderer.scrollToEndIndicator;
 	const originalViewportInput = renderer.handleViewportInput;
 	renderer.altScreenActive = true;
-	// Deterministic frames, no terminal/timer loop. All layout/compositing/input code is real Pi.
-	renderer.requestRender = () => {};
+	// Drive frames by hand while keeping requestRender's content-cache invalidation.
+	renderer.requestViewRender = () => {};
 	const tui = createLazyProxy(() => renderer);
 	const messages = new Container();
 	messages.addChild({

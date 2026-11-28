@@ -1,0 +1,11 @@
+{
+  "confirmedDigest": "cee0bab7b2959fe1158f9436440e2e559afa2ae5604b66acef8b6d631b2a0df2",
+  "changedPaths": [
+    "README.md",
+    "extensions/feature/context.ts",
+    "tests/context-dialog.test.ts",
+    "tests/mouse-interaction.test.ts"
+  ],
+  "runs": [],
+  "authorization": "合并到主分支呀然后推送提交"
+}

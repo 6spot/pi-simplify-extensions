@@ -1,0 +1,16 @@
+{
+  "confirmedDigest": "1edf36bfd443ef7040d54ec76c0d662fe4d473f27d686fdb10dd5d55c6cc6794",
+  "changedPaths": [
+    "README.md",
+    "extensions/feature/compact-thinking.ts",
+    "extensions/feature/context.ts",
+    "extensions/renderer/tool/codemode.ts",
+    "package-lock.json",
+    "package.json",
+    "tests/context-dialog.test.ts",
+    "tests/markdown-code-blocks.test.ts",
+    "tests/mouse-scroll-host.test.ts"
+  ],
+  "runs": [],
+  "authorization": "合并到主分支呀然后推送提交"
+}
