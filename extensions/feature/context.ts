@@ -8,7 +8,14 @@ import {
 	formatSkillsForPrompt,
 	getMarkdownTheme,
 } from "@earendil-works/pi-coding-agent";
-import { Key, Markdown, matchesKey, visibleWidth } from "@earendil-works/pi-tui";
+import {
+	Key,
+	type Keybinding,
+	type KeybindingsManager,
+	Markdown,
+	matchesKey,
+	visibleWidth,
+} from "@earendil-works/pi-tui";
 import { type Color, rgbColor } from "@earendil-works/pi-tui";
 import { padLine } from "../utils/format.ts";
 import { mouseBaseButton, parseSgrMousePacket } from "../utils/sgr-mouse.ts";
@@ -97,23 +104,44 @@ function normalizePreviewText(text: string): string {
 		.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "");
 }
 
+const keyLabels: Record<string, string> = {
+	up: "↑",
+	down: "↓",
+	escape: "Esc",
+	pageUp: "PgUp",
+	pageDown: "PgDn",
+	alt: process.platform === "darwin" ? "Option" : "Alt",
+};
+
+function bindingNames(bindings: KeybindingsManager, ...actions: Keybinding[]): string[] {
+	return actions
+		.flatMap((action) => bindings.getKeys(action))
+		.map((key) =>
+			key
+				.split("+")
+				.map((part) => keyLabels[part] ?? part.charAt(0).toUpperCase() + part.slice(1))
+				.join("+"),
+		);
+}
+
+function closeButtonLabel(keys: string[], width: number): string {
+	const label = `[${keys[0]?.toLowerCase() ?? "close"}]`;
+	if (visibleWidth(label) <= width) return label;
+	return width >= 7 ? "[close]" : "×";
+}
+
+function titleButtonHitbox(label: string, endCol: number, row = 1) {
+	return { row, startCol: endCol - visibleWidth(label) + 1, endCol };
+}
+
 export type DialogBounds = { left: number; top: number; width: number };
 
-/** 1-based terminal hitbox of the [esc] close button on the dialog title row (row 2 of the box). */
-export function escCloseHitbox(bounds: DialogBounds): {
-	row: number;
-	startCol: number;
-	endCol: number;
-} {
-	return {
-		row: bounds.top + 2,
-		startCol: bounds.left + bounds.width - 5,
-		endCol: bounds.left + bounds.width - 1,
-	};
+/** Terminal coordinates are 1-based. In the overlay the title is at local row 1. */
+export function escCloseHitbox(bounds: DialogBounds, closeLabel = "[esc]") {
+	return titleButtonHitbox(closeLabel, bounds.left + bounds.width - 1, bounds.top + 2);
 }
 
 const COPY_LABEL = "[copy]";
-const ESC_LABEL = "[esc]";
 
 /** 测试可替换；生产使用 pi 的剪贴板实现。 */
 let copyTextImpl: (text: string) => Promise<void> = (text) => copyToClipboard(text);
@@ -122,18 +150,9 @@ export function setPreviewCopyImpl(impl: ((text: string) => Promise<void>) | nul
 	copyTextImpl = impl ?? ((text) => copyToClipboard(text));
 }
 
-/** 1-based terminal hitbox of the [copy] button, one space left of [esc] on the same title row. */
-export function copyButtonHitbox(bounds: DialogBounds): {
-	row: number;
-	startCol: number;
-	endCol: number;
-} {
-	const esc = escCloseHitbox(bounds);
-	return {
-		row: esc.row,
-		startCol: esc.startCol - visibleWidth(COPY_LABEL) - 1,
-		endCol: esc.startCol - 2,
-	};
+export function copyButtonHitbox(bounds: DialogBounds, closeLabel = "[esc]") {
+	const close = escCloseHitbox(bounds, closeLabel);
+	return titleButtonHitbox(COPY_LABEL, close.startCol - 2, close.row);
 }
 
 let activeContextOverlays = 0;
@@ -160,7 +179,7 @@ export async function showTextPreview(
 	activeContextOverlays++;
 	try {
 		await ctx.ui.custom(
-			(tui, theme, _keybindings, done) => {
+			(tui, theme, keybindings, done) => {
 				closePreview = () => done(undefined);
 				signal?.addEventListener("abort", closePreview, { once: true });
 				ensureFullscreenMouseMotion(tui);
@@ -329,14 +348,16 @@ export async function showTextPreview(
 						markdownView.invalidate();
 					},
 					handleInput(data: string) {
-						if (matchesKey(data, Key.escape) || matchesKey(data, Key.ctrl("c"))) {
+						if (keybindings.matches(data, "tui.select.cancel")) {
 							done(undefined);
 							return;
 						}
-						if (matchesKey(data, Key.up)) scrollTo(scrollOffset - 1);
-						else if (matchesKey(data, Key.down)) scrollTo(scrollOffset + 1);
-						else if (matchesKey(data, "pageUp")) scrollTo(scrollOffset - pageSize);
-						else if (matchesKey(data, "pageDown")) scrollTo(scrollOffset + pageSize);
+						if (keybindings.matches(data, "tui.select.up")) scrollTo(scrollOffset - 1);
+						else if (keybindings.matches(data, "tui.select.down")) scrollTo(scrollOffset + 1);
+						else if (keybindings.matches(data, "tui.select.pageUp"))
+							scrollTo(scrollOffset - pageSize);
+						else if (keybindings.matches(data, "tui.select.pageDown"))
+							scrollTo(scrollOffset + pageSize);
 						else if (matchesKey(data, Key.home)) scrollTo(0);
 						else if (matchesKey(data, Key.end)) scrollTo(totalLines - pageSize);
 						else {
@@ -366,7 +387,17 @@ export async function showTextPreview(
 
 					render(width: number) {
 						const inner = Math.max(1, width - 2);
-						const actionsWidth = visibleWidth(`${COPY_LABEL} ${ESC_LABEL}`);
+						const closeKeys = bindingNames(keybindings, "tui.select.cancel");
+						const closeLabel = closeButtonLabel(closeKeys, inner);
+						escHitbox = titleButtonHitbox(closeLabel, width - 2);
+						const copyFits = visibleWidth(`${COPY_LABEL} ${closeLabel}`) <= inner;
+						copyHitbox = copyFits
+							? titleButtonHitbox(COPY_LABEL, escHitbox.startCol - 2)
+							: undefined;
+						const copyButton = copyFits
+							? `${theme.fg(copyHovered ? "text" : "muted", COPY_LABEL)} `
+							: "";
+						const actionsWidth = visibleWidth(copyButton) + visibleWidth(closeLabel);
 						const bodyInner = Math.max(1, inner - 1);
 						const bodyWidth = Math.max(1, bodyInner - 1);
 						const terminalHeight = Math.max(1, tui.terminal.rows);
@@ -380,14 +411,6 @@ export async function showTextPreview(
 						const wrapped = markdownView.render(bodyWidth);
 						totalLines = wrapped.length;
 						scrollOffset = Math.min(scrollOffset, Math.max(0, totalLines - pageSize));
-						// hitbox 用弹框局部坐标（0-based）：title 固定第 1 行，esc/copy
-						// 在行尾，滚动条字符在 body 行右 border 内侧（width-2 列）。
-						escHitbox = { row: 1, startCol: width - 6, endCol: width - 2 };
-						copyHitbox = {
-							row: 1,
-							startCol: width - 6 - 1 - visibleWidth(COPY_LABEL),
-							endCol: width - 8,
-						};
 						const visible = wrapped.slice(scrollOffset, scrollOffset + pageSize);
 						const border = (text: string) => theme.fg("border", text);
 						const scrollable = totalLines > pageSize;
@@ -428,10 +451,23 @@ export async function showTextPreview(
 						});
 						const start = totalLines === 0 ? 0 : scrollOffset + 1;
 						const end = Math.min(totalLines, scrollOffset + pageSize);
-						const status = `${start}-${end} / ${totalLines} lines · ↑↓ PgUp/PgDn Home/End`;
+						const scrollKeys = [
+							bindingNames(keybindings, "tui.select.up", "tui.select.down").join("/"),
+							bindingNames(keybindings, "tui.select.pageUp", "tui.select.pageDown").join("/"),
+							"Home/End",
+						]
+							.filter(Boolean)
+							.join(" ");
+						const status = [
+							`${start}-${end} / ${totalLines} lines`,
+							scrollKeys,
+							closeKeys.length && `${closeKeys.join("/")} close`,
+						]
+							.filter(Boolean)
+							.join(" · ");
 						const lines = [
 							border(`╭${"─".repeat(inner)}╮`),
-							`${border("│")}${padLine(` ${theme.bold(theme.fg("accent", title))}`, inner - actionsWidth)}${theme.fg(copyHovered ? "text" : "muted", COPY_LABEL)} ${theme.fg(escHovered ? "text" : "muted", ESC_LABEL)}${border("│")}`,
+							`${border("│")}${padLine(` ${theme.bold(theme.fg("accent", title))}`, inner - actionsWidth)}${copyButton}${theme.fg(escHovered ? "text" : "muted", closeLabel)}${border("│")}`,
 							`${border("├")}${border("─".repeat(inner))}${border("┤")}`,
 							...bodyRows,
 							`${border("├")}${border("─".repeat(inner))}${border("┤")}`,
@@ -770,7 +806,7 @@ export default function contextUsageExtension(pi: ExtensionAPI) {
 				let action;
 				try {
 					action = await ctx.ui.custom(
-						(tui, theme, _keybindings, done) => {
+						(tui, theme, keybindings, done) => {
 							ensureFullscreenMouseMotion(tui);
 							let previewHitboxes: Array<{
 								key: PreviewKey;
@@ -839,22 +875,22 @@ export default function contextUsageExtension(pi: ExtensionAPI) {
 							return {
 								invalidate() {},
 								handleInput(data: string) {
-									if (matchesKey(data, Key.escape) || matchesKey(data, Key.ctrl("c"))) {
+									if (keybindings.matches(data, "tui.select.cancel")) {
 										done(undefined);
 										return;
 									}
-									if (matchesKey(data, Key.up) && visiblePreviews.length > 0) {
+									if (keybindings.matches(data, "tui.select.up") && visiblePreviews.length > 0) {
 										selectedPreviewIndex =
 											(selectedPreviewIndex - 1 + visiblePreviews.length) % visiblePreviews.length;
 										tui.requestRender();
 										return;
 									}
-									if (matchesKey(data, Key.down) && visiblePreviews.length > 0) {
+									if (keybindings.matches(data, "tui.select.down") && visiblePreviews.length > 0) {
 										selectedPreviewIndex = (selectedPreviewIndex + 1) % visiblePreviews.length;
 										tui.requestRender();
 										return;
 									}
-									if (matchesKey(data, Key.enter)) {
+									if (keybindings.matches(data, "tui.select.confirm")) {
 										done(visiblePreviews[selectedPreviewIndex]?.key);
 										return;
 									}
@@ -878,7 +914,22 @@ export default function contextUsageExtension(pi: ExtensionAPI) {
 								},
 								render(width: number) {
 									const inner = Math.max(1, width - 2);
-									const escWidth = visibleWidth("[esc]");
+									const closeKeys = bindingNames(keybindings, "tui.select.cancel");
+									const closeLabel = closeButtonLabel(closeKeys, inner);
+									escHitbox = titleButtonHitbox(closeLabel, width - 2);
+									const selectKeys = bindingNames(
+										keybindings,
+										"tui.select.up",
+										"tui.select.down",
+									).join("/");
+									const confirmKeys = bindingNames(keybindings, "tui.select.confirm").join("/");
+									const hint = [
+										selectKeys && `${selectKeys} select`,
+										confirmKeys ? `Click / ${confirmKeys} to preview` : "Click to preview",
+										closeKeys.length && `${closeKeys.join("/")} close`,
+									]
+										.filter(Boolean)
+										.join(" · ");
 									const percent = contextWindow > 0 ? (used / contextWindow) * 100 : 0;
 									const title = theme.bold(theme.fg("accent", "Context Usage"));
 									const subtitle = `${formatTokens(used)} / ${formatTokens(contextWindow)} tokens (${percent.toFixed(1)}%)`;
@@ -932,13 +983,13 @@ export default function contextUsageExtension(pi: ExtensionAPI) {
 									const border = (text: string) => theme.fg("border", text);
 									const lines = [
 										border(`╭${"─".repeat(inner)}╮`),
-										`${border("│")}${padLine(` ${title}  ${theme.fg("dim", subtitle)}`, inner - escWidth)}${theme.fg(escHovered ? "text" : "muted", "[esc]")}${border("│")}`,
+										`${border("│")}${padLine(` ${title}  ${theme.fg("dim", subtitle)}`, inner - visibleWidth(closeLabel))}${theme.fg(escHovered ? "text" : "muted", closeLabel)}${border("│")}`,
 										`${border("├")}${border("─".repeat(inner))}${border("┤")}`,
 										`${border("│")}${padLine(` ${segments}`, inner)}${border("│")}`,
 										`${border("│")}${" ".repeat(inner)}${border("│")}`,
 										...partRows.map((row) => `${border("│")}${row}${border("│")}`),
 										`${border("├")}${border("─".repeat(inner))}${border("┤")}`,
-										`${border("│")}${padLine(theme.fg("dim", " ↑↓ select · Click / Enter to preview · [esc] close"), inner)}${border("│")}`,
+										`${border("│")}${padLine(theme.fg("dim", ` ${hint}`), inner)}${border("│")}`,
 										border(`╰${"─".repeat(inner)}╯`),
 									];
 
@@ -948,10 +999,7 @@ export default function contextUsageExtension(pi: ExtensionAPI) {
 										Math.max(1, terminalHeight - 2),
 									);
 									const visibleHeight = Math.min(lines.length, maxHeight);
-									// hitbox 用弹框局部坐标（0-based）：esc 在 title 行（第 1 行）
-									// 尾部 │ 前 5 列，preview 行对应 partRows（顶 border=0、title=1、
-									// ├=2、segments=3、空行=4，part 从 5 起）。不依赖官方放置行列。
-									escHitbox = { row: 1, startCol: width - 6, endCol: width - 2 };
+									// partRows 从局部第 5 行起，命中范围只包含实际可见的行。
 									previewHitboxes = visiblePreviews.flatMap((preview) => {
 										const partIndex = allParts.findIndex((part) => part.label === preview.label);
 										const line = 5 + partIndex;
