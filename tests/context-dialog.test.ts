@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { getEventListeners } from "node:events";
 import test from "node:test";
-import { formatSkillsForPrompt, initTheme } from "@earendil-works/pi-coding-agent";
+import { formatSkillsForPrompt, initTheme, SessionManager } from "@earendil-works/pi-coding-agent";
 import { rgbColor, visibleWidth } from "@earendil-works/pi-tui";
 import contextUsageExtension, {
 	capParts,
@@ -136,6 +136,42 @@ test("context breakdown separates tools, results, and conversation without infla
 		{ label: "Free space", tokens: 100, color: rgbColor(0x76, 0x84, 0x94) },
 	];
 	assert.equal(new Set(finalParts.map((part) => part.color)).size, 8);
+});
+
+test("context preview and token estimate follow the Bash exclusion flag", () => {
+	const sessionManager = SessionManager.inMemory();
+	const ctx = { sessionManager } as any;
+	const bash = {
+		role: "bashExecution" as const,
+		exitCode: 0,
+		cancelled: false,
+		truncated: false,
+		timestamp: 0,
+	};
+	sessionManager.appendMessage({
+		...bash,
+		command: "echo local",
+		output: "local output",
+		excludeFromContext: true,
+	});
+	const excluded = collectContextBreakdown(ctx, []);
+	assert.equal(excluded.previews.contextFiles, "No conversation context.");
+	assert.equal(excluded.parts.find((part) => part.label === "Context")?.tokens, 0);
+
+	sessionManager.appendMessage({ ...bash, command: "echo old", output: "old output" });
+	sessionManager.appendMessage({
+		...bash,
+		command: "echo new",
+		output: "new output",
+		excludeFromContext: false,
+	});
+	const mixed = collectContextBreakdown(ctx, []);
+	assert.match(
+		mixed.previews.contextFiles,
+		/echo old[\s\S]*old output[\s\S]*echo new[\s\S]*new output/,
+	);
+	assert.doesNotMatch(mixed.previews.contextFiles, /local/);
+	assert.equal(mixed.parts.find((part) => part.label === "Context")?.tokens, 10);
 });
 
 test("context breakdown attributes embedded memory and skills once", () => {

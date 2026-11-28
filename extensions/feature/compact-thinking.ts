@@ -346,7 +346,7 @@ export class ThinkingPreviewBlock implements Component {
 				previewLines: number;
 				hintHovered: boolean;
 				expandAction: string | undefined;
-				lines: string[];
+				lines: readonly string[];
 		  }
 		| undefined;
 
@@ -401,7 +401,7 @@ export class ThinkingPreviewBlock implements Component {
 		this.hintHovered = hovered;
 	}
 
-	private headingLines(width: number, hiddenLines: number, padding: number): string[] {
+	private headingLines(width: number, hiddenLines: number, padding: number): readonly string[] {
 		const hint = this.expanded
 			? undefined
 			: hiddenPreviewHint(hiddenLines, Boolean(this.text) && this.effectivePreviewLines() <= 0);

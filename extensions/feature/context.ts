@@ -645,6 +645,7 @@ export function collectContextBreakdown(
 					`## Result: ${message.toolName}\n\n${previewValue(message.content)}`,
 				);
 			} else if (message.role === "bashExecution") {
+				if (message.excludeFromContext) continue;
 				contextTokens += estimateTokens(message);
 				contextPreview.push(
 					`## Bash\n\nCommand:\n\n${previewValue(message.command)}\n\nOutput:\n\n${previewValue(message.output)}`,

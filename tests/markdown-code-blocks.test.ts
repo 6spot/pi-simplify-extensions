@@ -10,8 +10,8 @@ const source = 'Before\n\n```typescript\nconst title = "中文🙂";\nconst n = 
 const nativeRender = Markdown.prototype.render;
 const prototype = Markdown.prototype as unknown as { renderToken?: (...args: unknown[]) => string[] };
 const nativeToken = prototype.renderToken;
-const plain = (lines: string[]) => lines.map(stripAnsi);
-const withoutFences = (lines: string[]) => lines.filter((line) => !/^```(?:typescript|text)?$/.test(stripAnsi(line).trim()));
+const plain = (lines: readonly string[]) => lines.map(stripAnsi);
+const withoutFences = (lines: readonly string[]) => lines.filter((line) => !/^```(?:typescript|text)?$/.test(stripAnsi(line).trim()));
 
 afterEach(() => {
 	patchRegistry.get<{ dispose(): void }>(MARKDOWN_CODE_BLOCK_PATCH)?.dispose();
